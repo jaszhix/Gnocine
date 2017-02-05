@@ -306,10 +306,12 @@ function init() {
 
     // OSD keyboard override
     const A11Y_APPLICATIONS_SCHEMA = 'org.gnome.desktop.a11y.applications';
-    const SHOW_KEYBOARD = 'screen-keyboard-enabled';
     let _oskA11yApplicationsSettings = new Gio.Settings({ schema_id: A11Y_APPLICATIONS_SCHEMA });
+    const SHOW_KEYBOARD = 'screen-keyboard-enabled';
     Main.keyboard.toggle = function() {
         if (Main.keyboard._keyboardVisible) {
+            _oskA11yApplicationsSettings.set_boolean(SHOW_KEYBOARD, false);
+            Main.keyboard._sync();
             Main.keyboard.Hide();
         } else {
             _oskA11yApplicationsSettings.set_boolean(SHOW_KEYBOARD, true);
