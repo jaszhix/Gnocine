@@ -23,12 +23,12 @@
 
 * user
   *  Status: Partially working
-  *  Issues:
+  *  Notes:
     *  Menu entries do not point to Gnome equivalents.
 
 * calendar
   *  Status: Working
-  *  Issues:
+  *  Notes:
     *  Date and Time Settings menu entry doesn't point to Gnome Shell equivalent.
 
 * notifications
@@ -45,7 +45,7 @@
 
 * expo
   *  Status: Working
-  *  Issues:
+  *  Notes:
     *  Cinnamon expo not working. Version included with Classic Gnome was modified to trigger the Gnome Activities view.
 
 * nvidia-prime
@@ -56,7 +56,7 @@
 
 * sound
   *  Status: Working
-    *  Issues:
+    *  Notes:
     *  ```imports.gi.Cvc``` was changed to ```imports.gi.Gvc```.
 
 * windows-quick-list
@@ -76,15 +76,17 @@
 
 * workspace-switcher
   *  Status: Partially working
-  *  Issues:
+  *  Notes:
     *  St.DrawingArea API: Only usable if "Simple buttons" option is enabled, otherwise buttons don't render correctly.
 
 * keyboard
-  *  Status: Untested
+  *  Status: Working
+  *  Notes:
+    *  ```load_file_to_cairo_surface``` patched with ```__load_file_to_cairo_surface```.
 
 * panel-launchers
   *  Status: Partially working
-  *  Issues:
+  *  Notes:
     *  Options menu items not working.
 
 * settings
@@ -92,7 +94,7 @@
 
 * systray
   *  Status: Partially working
-  *  Issues:
+  *  Notes:
     *  Systray icon click events do not work.
     *  Icons only appear after a new process is launched. Does not load icons for existing processes.
 
@@ -101,7 +103,7 @@
 
 * menu
   *  Status: Partially working
-  *  Issues:
+  *  Notes:
     *  Left panel width is wide.
 
 * power
@@ -114,7 +116,7 @@
 
 * IcingTaskManager@json
   *  Status: Partially working
-  *  Issues: 
+  *  Notes: 
     *  Not all options are tested yet.
 
 * weather@mockturtl

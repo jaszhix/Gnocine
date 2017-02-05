@@ -58,6 +58,7 @@ function init() {
     patchStTextureCache();
     patchStScrollView();
     patchBoxLayout();
+    patchTextureCache();
 }
 
 function patchStTable() {
@@ -294,5 +295,27 @@ function patchBoxLayout() {
         St.BoxLayout.prototype.destroy_children = function() {
             this.destroy_all_children();
         };
+    }
+}
+
+function patchTextureCache() {
+    // https://developer.gnome.org/st/stable/st-st-texture-cache.html#st-texture-cache-load-file-to-cairo-surface
+    let instance = St.TextureCache.get_default();
+    instance.__load_file_to_cairo_surface = function(file, scale) {
+        if (scale === undefined || !scale) {
+            scale = 1;
+        }
+        if (typeof file === 'string') {
+            file = Gio.File.new_for_path(file);
+        }
+        try {
+            return instance.load_file_to_cairo_surface(file, scale);
+        } catch (e) {
+             global.logError('load_file_to_cairo_surface: ', e) 
+        }
+    }
+
+    St.TextureCache.get_default = function () {
+        return instance;
     }
 }

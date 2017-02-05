@@ -40,7 +40,7 @@ EmblemedIcon.prototype = {
 
         cr.save()
 
-        let surf = St.TextureCache.get_default().load_file_to_cairo_surface(this.path);
+        let surf = St.TextureCache.get_default().__load_file_to_cairo_surface(this.path);
 
         let factor = w / surf.getWidth();
 
