@@ -1,0 +1,11 @@
+{
+    "display_type": {
+        "type": "combobox",
+        "description": "Type of display",
+        "default": "buttons",
+        "options" : {
+            "A visual representation of the workspaces": "visual",
+            "Simple buttons": "buttons"
+        }
+    }
+}
