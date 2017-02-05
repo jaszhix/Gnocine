@@ -38,7 +38,7 @@
   *  Status: Untested
 
 * slideshow
-*  Status: Untested
+*  Status: Loads, not working
 
 * window-list
 *  Status: Working

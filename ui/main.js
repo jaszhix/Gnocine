@@ -262,13 +262,15 @@ const Keybindings = cimports.ui.keybindings;
 const StatusIconDispatcher = cimports.ui.statusIconDispatcher;
 const Systray = cimports.ui.systray;
 const IndicatorManager = cimports.ui.indicatorManager;
+//const SlideshowManager = cimports.ui.slideshowManager;
 
 //Our new variables
 let workspace_names, dynamicWorkspaces, wmSettings, expo,
     _errorLogStack, lookingGlass, can_log, lg_log_file,
     settingsManager, cinnamonDBusService, panelManager,
     themeManager, placesManager, keybindingManager,
-    statusIconDispatcher, systrayManager, indicatorManager;
+    statusIconDispatcher, systrayManager, indicatorManager,
+    slideshowManager;
 
 // Override panel property to set the shell panel as a cinnamon one.
 Object.defineProperty(this, "panel", {
@@ -292,6 +294,7 @@ function init() {
     statusIconDispatcher = new StatusIconDispatcher.StatusIconDispatcher();
     systrayManager = new Systray.SystrayManager();
     indicatorManager = new IndicatorManager.IndicatorManager();
+    //slideshowManager = new SlideshowManager.SlideshowManager(); // Requires Cinnamon dependency
 
     //Thats bad, we don't resolve gSettings yet.
     let wmSettings = new Gio.Settings({schema_id: "org.cinnamon.desktop.wm.preferences"});
