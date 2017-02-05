@@ -304,6 +304,20 @@ function init() {
 
     wm.moveToWorkspace = Main.wm.actionMoveWorkspace
 
+    // OSD keyboard override
+    const A11Y_APPLICATIONS_SCHEMA = 'org.gnome.desktop.a11y.applications';
+    const SHOW_KEYBOARD = 'screen-keyboard-enabled';
+    let _oskA11yApplicationsSettings = new Gio.Settings({ schema_id: A11Y_APPLICATIONS_SCHEMA });
+    Main.keyboard.toggle = function() {
+        if (Main.keyboard._keyboardVisible) {
+            Main.keyboard.Hide();
+        } else {
+            _oskA11yApplicationsSettings.set_boolean(SHOW_KEYBOARD, true);
+            Main.keyboard._sync();
+            Main.keyboard.Show();
+        }
+    }
+
     //layoutManager = new Layout.LayoutManager();
     //overview = new Overview.Overview();
     //overview.init();

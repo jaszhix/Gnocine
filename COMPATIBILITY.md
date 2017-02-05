@@ -66,7 +66,7 @@
   *  Status: Loads, but menu toggles likely have no effect in Gnome Shell because Cinnamon notifications are different.
 
 * on-screen-keyboard
-  *  Status: Untested
+  *  Status: Working
 
 * separator
   *  Status: Working
