@@ -9,105 +9,105 @@
 
 ### Default Applets
 
-* a11y@cinnamon.org
-  *  Status: Untested
+* a11y
+  *  Status: Loads, menu items not working
 
-* network@cinnamon.org
+* network
   *  Status: Partially Working
 
-* recent@cinnamon.org
+* recent
   *  Status: Untested
 
-* show-desktop@cinnamon.org
+* show-desktop
   *  Status: Working
 
-* user@cinnamon.org
+* user
   *  Status: Partially working
   *  Issues:
     *  Menu entries do not point to Gnome equivalents.
 
-* calendar@cinnamon.org
+* calendar
   *  Status: Working
   *  Issues:
     *  Date and Time Settings menu entry doesn't point to Gnome Shell equivalent.
 
-* notifications@cinnamon.org
+* notifications
   *  Status: Loads, not working
 
-* removable-drives@cinnamon.org
+* removable-drives
   *  Status: Untested
 
-* slideshow@cinnamon.org
+* slideshow
 *  Status: Untested
 
-* window-list@cinnamon.org
+* window-list
 *  Status: Working
 
-* expo@cinnamon.org
+* expo
   *  Status: Working
   *  Issues:
     *  Cinnamon expo not working. Version included with Classic Gnome was modified to trigger the Gnome Activities view.
 
-* nvidia-prime@cinnamon.org
+* nvidia-prime
   *  Status: Untested
 
-* scale@cinnamon.org
+* scale
   *  Status: Untested
 
-* sound@cinnamon.org
+* sound
   *  Status: Working
     *  Issues:
     *  ```imports.gi.Cvc``` was changed to ```imports.gi.Gvc```.
 
-* windows-quick-list@cinnamon.org
+* windows-quick-list
   *  Status: Working
 
-* inhibit@cinnamon.org
+* inhibit
   *  Status: Loads, but menu toggles likely have no effect in Gnome Shell because Cinnamon notifications are different.
 
-* on-screen-keyboard@cinnamon.org
+* on-screen-keyboard
   *  Status: Untested
 
-* separator@cinnamon.org
-  *  Status: Untested
+* separator
+  *  Status: Working
 
-* spacer@cinnamon.org
-  *  Status: Untested
+* spacer
+  *  Status: Working
 
-* workspace-switcher@cinnamon.org
+* workspace-switcher
   *  Status: Partially working
   *  Issues:
     *  St.DrawingArea API: Only usable if "Simple buttons" option is enabled, otherwise buttons don't render correctly.
 
-* keyboard@cinnamon.org
+* keyboard
   *  Status: Untested
 
-* panel-launchers@cinnamon.org
+* panel-launchers
   *  Status: Partially working
   *  Issues:
     *  Options menu items not working.
 
-* settings@cinnamon.org
+* settings
   *  Status: Untested
 
-* systray@cinnamon.org
+* systray
   *  Status: Partially working
   *  Issues:
     *  Systray icon click events do not work.
     *  Icons only appear after a new process is launched. Does not load icons for existing processes.
 
-* xrandr@cinnamon.org
+* xrandr
 *  Status: Untested
 
-* menu@cinnamon.org
+* menu
   *  Status: Partially working
   *  Issues:
     *  Left panel width is wide.
 
-* power@cinnamon.org
+* power
   *  Status: Untested
 
-* trash@cinnamon.org
+* trash
   *  Status: Working
 
 ### Non-default Applets

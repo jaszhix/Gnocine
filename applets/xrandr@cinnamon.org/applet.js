@@ -1,12 +1,12 @@
 /* -*- mode: js2; js2-basic-offset: 4; indent-tabs-mode: nil -*- */
 
-const Interfaces = imports.misc.interfaces;
+const Interfaces = cimports.misc.interfaces;
 const Gdk = imports.gi.Gdk;
 const GLib = imports.gi.GLib;
-const CinnamonDesktop = imports.gi.CinnamonDesktop;
+const CinnamonDesktop = imports.gi.GnomeDesktop;
 const Lang = imports.lang;
-const Applet = imports.ui.applet;
-const PopupMenu = imports.ui.popupMenu;
+const Applet = cimports.ui.applet;
+const PopupMenu = cimports.ui.popupMenu;
 
 const N_ = function(e) { return e };
 
