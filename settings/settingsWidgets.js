@@ -14,7 +14,6 @@ const GDesktopEnums = imports.gi.GDesktopEnums;
 const GnomeDesktop = imports.gi.GnomeDesktop;
 const Params = imports.misc.params;
 const Mainloop = imports.mainloop;
-const lo = cimports.misc.lodash._;
 
 const KeybindingWidgets = cimports.settings.keybindingWidgets;
 //const Gettext = Gettext.domain(ExtensionUtils.metadata['gettext-domain']);
@@ -679,8 +678,7 @@ const Switch = new GObject.Class({
         this.set_tooltip_text(params.tooltip);
 
         this.content_widget.connect("state-set", Lang.bind(this, this.apply));
-
-        // Set initial state
+        // Set the initial state from settings.
         this.content_widget.set_active(this.state);
     },
 
@@ -705,7 +703,6 @@ const SpinButton = new GObject.Class({
             label: "", units: "", mini: null, maxi: null, step: 1,
             page: null, size_group: null, dep_key: null, tooltip: ""
         });
-
         this.parent(params.dep_key);
 
         this.timer = null;
@@ -753,12 +750,11 @@ const SpinButton = new GObject.Class({
 
     apply_later: function(args) {
         function applyValues() {
-            this.set_value(lo.round(this.content_widget.get_value()));
+            this.set_value(this.content_widget.get_value());
             this.timer = null;
         }
-        if (this.timer) {
+        if (this.timer)
             Mainloop.source_remove(this.timer);
-        }
         this.timer = Mainloop.timeout_add(300, Lang.bind(this, applyValues));
     },
 });
@@ -984,7 +980,6 @@ const ComboBox = new GObject.Class({
             label: "", options: [], valtype: "string", size_group: null,
             dep_key: null, tooltip: ""
         });
-        global.log('params: ', JSON.stringify(params))
         this.parent(params.dep_key);
 
         this.valtype = params.valtype;
@@ -1039,13 +1034,13 @@ const ComboBox = new GObject.Class({
         // let var_type = type(options[0][0]);
         this.model = new Gtk.ListStore();
         //this.model.set_column_types ([var_type, GObject.TYPE_STRING]);
-        this.model.set_column_types([GObject.TYPE_STRING, GObject.TYPE_STRING]);
+        this.model.set_column_types ([GObject.TYPE_STRING]);
 
         // error: this.model.push is not a function
-        for (let option in options) {
+        /*for (let option in options) {
             global.log(Object.keys(this.model))
-            this.option_map[option[0]] = this.model.append([option[0], option[1]]);
-        }
+            this.option_map[option[0]] = this.model.push([option[0], option[1]]);
+        }*/
 
         this.content_widget.set_model(this.model);
         this.content_widget.set_id_column(0);

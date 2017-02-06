@@ -268,8 +268,33 @@ const Application = new Lang.Class({
             //this.extensionSelector = new Gtk.ListBox({ selection_mode: Gtk.SelectionMode.NONE });
             //this.extensionSelector.set_sort_func(Lang.bind(this, this._sortList));
             //this.extensionSelector.set_header_func(Lang.bind(this, this._updateHeader));*/
+
+            //this.button_back = self.builder.get_object("button_back");
+            //this.button_back.set_tooltip_text(_("Back to all settings"));
+            //let [m, n] = this.button_back.get_preferred_width();
+            //this.stack_switcher.set_margin_right(n);
+            //this.button_back.connect('clicked', Lang.bind(this, this.back_to_icon_view));
         }
     },
+
+    /*_back_to_icon_view: function(widget, event) {
+        this.window.set_title(_("System Settings"))
+        this.window.resize(WIN_WIDTH, WIN_HEIGHT);
+        let children = this.content_box.get_children();
+        for (let child in children) {
+            child.hide();
+            if (child.get_name() == "c_box") {
+                let c_widgets = child.get_children();
+                for (c_widget in c_widgets) {
+                    c_widget.hide();
+                }
+            }
+        }
+        this.main_stack.set_visible_child_name("side_view_page");
+        this.header_stack.set_visible_child_name("side_view");
+        this.search_entry.grab_focus();
+        this.current_sidepage = null;
+    },*/
 
     getHeader: function () {
         let headerBar, headerStart, imageNew, buttonNew, popMenu, imageMenu, buttonMenu;

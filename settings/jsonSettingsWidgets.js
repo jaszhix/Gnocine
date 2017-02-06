@@ -11,7 +11,6 @@ const GObject = imports.gi.GObject;
 const Gtk = imports.gi.Gtk;
 const Lang = imports.lang;
 const Mainloop = imports.mainloop;
-const lo = cimports.misc.lodash._;
 
 const SettingsWidgets = cimports.settings.settingsWidgets;
 
@@ -236,7 +235,6 @@ const JSONSettingsHandler = new GObject.Class({
             let [ok, raw_data] = GLib.file_get_contents(jsonFile.get_path());
             try {
                 var settings = JSON.parse(raw_data);//, encoding=null, object_pairs_hook=collections.OrderedDict
-                return settings;
             } catch(e) {
                 throw Error("Failed to parse settings JSON data for file %s".format(this.filepath));
             }
@@ -244,7 +242,6 @@ const JSONSettingsHandler = new GObject.Class({
             let error = "Failed to parse settings JSON data for file %s".format(this.filepath);
             global.logError(error);
         }
-
         for (let key in this.settings) {
             if (!this.settings[key].hasOwnProperty('value')) {
                 continue;
@@ -264,7 +261,6 @@ const JSONSettingsHandler = new GObject.Class({
             file['delete'](null);
         let rawData = JSON.stringify(this.settings, null, 4);
         GLib.file_set_contents(this.filepath, rawData);
-        this.resume_monitor();
     },
 });
 
@@ -278,7 +274,6 @@ function json_settings_factory(subclass) {
             this.key = key;
             this.settings = settings;
             this.state = properties.value; // Value of setting for this widdget
-
 
             if(!this.on_setting_changed) {
                 this.on_setting_changed = Lang.bind(this, function(args) {
@@ -306,14 +301,7 @@ function json_settings_factory(subclass) {
             }
             kwargs.label = properties.description;
             this.parent(kwargs);
-
-            // Set the initial state from settings.
-            /*if (subclass === 'Switch') { // instanceof didn't work here
-                this.content_widget.set_active(this.state);
-            }*/ /*else if (subclass === 'SpinButton') {
-                this.content_widget.set_digits(this.state);
-            }*/
-            // ... need to check state setting syntax for other classes, and add them here.
+            
             this.attach();
         },
 

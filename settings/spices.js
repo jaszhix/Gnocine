@@ -142,7 +142,10 @@ const SpiceHarvester = new GObject.Class({
 
         this.window = window;
         this.builder = new Gtk.Builder();
-        this.builder.add_from_file("/usr/share/cinnamon/cinnamon-settings/cinnamon-settings-spice-progress.ui");
+        
+        this.builder.add_from_file(GLib.build_filenamev([
+            global.userdatadir, "settings", "cinnamon-settings-spice-progress.ui"
+        ]));
         this.progress_window = this.builder.get_object("progress_window");
         //this.progress_window.set_transient_for(window);
         this.progress_window.set_destroy_with_parent(true);
@@ -313,6 +316,7 @@ const SpiceHarvester = new GObject.Class({
 
     load: function(onDone, force) {
         this.abort_download = ABORT_NONE;
+        global.log("load");
         if (this.has_cache && !force) {
             this.load_cache();
             ui_thread_do(onDone, this.index_cache);
@@ -860,7 +864,7 @@ const SpiceHarvester = new GObject.Class({
                 }
                 for (let jetsam in dir_list) {
                     try {
-                        settingsDir.get_child(uuid),get_child(jetsam)['delete'](null);
+                        settingsDir.get_child(uuid).get_child(jetsam)['delete'](null);
                     } catch(e) {
                         continue;
                     }

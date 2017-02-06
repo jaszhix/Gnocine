@@ -12,7 +12,6 @@ const GObject = imports.gi.GObject;
 const Gtk = imports.gi.Gtk;
 const GdkPixbuf = imports.gi.GdkPixbuf;
 
-
 const _ = Gettext.gettext;
 
 const TWEEN_SHAPES = [

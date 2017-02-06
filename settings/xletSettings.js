@@ -104,7 +104,7 @@ const XLetSidePage = new GObject.Class({
         this.isXletDataloaded = this.load_xlet_data();
     },
 
-    load: function() {
+    load: function(window) {
         if (this.isXletDataloaded) {
             this.build();
             if (this.load_instances()) {
@@ -344,8 +344,7 @@ const XLetSidePage = new GObject.Class({
                         widget = new XLETSettingsButton(item, this.uuid, info.id);
                         section.add_row(widget);
                     } else if (settings_type == "label") {
-                        // Text is in global scope?
-                        widget = Text(translate(this.uuid, item.description));
+                        widget = new SettingsWidgets.Text(translate(this.uuid, item.description));
                         section.add_row(widget);
                     } else if (XLET_SETTINGS_WIDGETS.hasOwnProperty(settings_type)) { // Changed to fix invalid 'in' operand error
                         global.log("Is: " + global[XLET_SETTINGS_WIDGETS[settings_type]]);
@@ -382,7 +381,7 @@ const XLetSidePage = new GObject.Class({
                     widget = new XLETSettingsButton(item, this.uuid, info.id);
                     section.add_row(widget);
                 } else if (settings_type == "label") {
-                    widget = Text(translate(this.uuid, item.description));
+                    widget = new SettingsWidgets.Text(translate(this.uuid, item.description));
                     section.add_row(widget);
                 } else if (XLET_SETTINGS_WIDGETS.hasOwnProperty(settings_type)) { // Changed to fix invalid 'in' operand error
                     widget = new global[XLET_SETTINGS_WIDGETS[settings_type]](key, info.settings, item);
