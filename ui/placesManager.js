@@ -64,7 +64,7 @@ function _makeLaunchContext(params)
     params = Params.parse(params, { workspace: -1,
                                     timestamp: 0 });
 
-    let launchContext = global.create_app_launch_context();
+    let launchContext = global.__create_app_launch_context();
     if (params.workspace != -1)
         launchContext.set_desktop(params.workspace);
     if (params.timestamp != 0)

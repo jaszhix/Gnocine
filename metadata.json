@@ -1,5 +1,5 @@
 {
-   "shell-version": ["3.18.5", "3.20.4"],
+   "shell-version": ["3.18", "3.20", "3.22"],
    "uuid": "gnocine@json",
    "name": "Gnocine",
    "description": "A Cinnamon compatibility layer for GNOME Shell.",

@@ -13,6 +13,9 @@ const GObject = imports.gi.GObject;
 const GdkPixbuf = imports.gi.GdkPixbuf;
 const Gdk = imports.gi.Gdk;
 const Pango = imports.gi.Pango;
+const Clutter = imports.gi.Clutter;
+
+const Mainloop = imports.mainloop;
 
 const SettingsWidgets = cimports.settings.settingsWidgets;
 const Spices = cimports.settings.spices;
@@ -124,8 +127,8 @@ function translate(uuid, string) {
 }
 
 const ExtensionSidePage = new GObject.Class({
-    Name: 'ClassicGnome.ExtensionSidePage',
-    GTypeName: 'ClassicGnomeExtensionSidePage',
+    Name: 'Gnocine.ExtensionSidePage',
+    GTypeName: 'GnocineExtensionSidePage',
     Extends: SettingsWidgets.SidePage,
 
     _init: function(name, icon, keywords, content_box, collection_type, argv, window, module) {
@@ -139,466 +142,459 @@ const ExtensionSidePage = new GObject.Class({
     },
 
     load: function() {
-        this.build();
-        this.running_uuids = null;
-        this._proxy = null;
-        this._signals = [];
-
-        let scrolledWindow = new Gtk.ScrolledWindow();
-        scrolledWindow.set_shadow_type(Gtk.ShadowType.ETCHED_IN);
-        scrolledWindow.set_border_width(6);
-
-        this.stack = new SettingsWidgets.SettingsStack();
-
-        this.stack_switcher = new Gtk.StackSwitcher();
-        this.stack_switcher.set_halign(Gtk.Align.CENTER);
-        this.stack_switcher.set_stack(this.stack);
-        this.stack_switcher.set_homogeneous(true);
-
-        this.vbox = new Gtk.VBox();
-        this.vbox.pack_start(this.stack_switcher, false, true, 2);
-        this.vbox.pack_start(this.stack, true, true, 2);
-        this.vbox.expand = true;
-
-        this.add_widget(this.vbox);
-        //this.add_widget(this.stack);
-
-        let extensions_vbox = new Gtk.VBox();
-
-        this.search_entry = new Gtk.Entry();
-        this.search_entry.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, 'edit-find-symbolic');
-        this.search_entry.set_placeholder_text(_("Search"));
-        this.search_entry.connect('changed', Lang.bind(this, this.on_entry_refilter));
-
-        if (this.collection_type == "applet")
-            this.stack.add_titled(extensions_vbox, "installed", _("Installed applets"));
-        else if (this.collection_type == "desklet")
-            this.stack.add_titled(extensions_vbox, "installed", _("Installed desklets"));
-        else if (this.collection_type == "extension")
-            this.stack.add_titled(extensions_vbox, "installed", _("Installed extensions"));
-        else if (this.collection_type == "theme")
-            this.stack.add_titled(extensions_vbox, "installed", _("Installed themes"));
-
-        this.stack.expand = true;
-
-        this.treeview = new Gtk.TreeView();
-        this.treeview.set_rules_hint(true);
-        this.treeview.set_has_tooltip(true);
-        if (this.themes)
-            this.treeview.connect("row-activated", Lang.bind(this, this.on_row_activated));
-
-        let cr = new Gtk.CellRendererPixbuf();
-        let column2 = new Gtk.TreeViewColumn({ title: "Icon" });
-        column2.pack_start (cr, true);
-        column2.set_min_width(50);
-        column2.add_attribute(cr, "pixbuf", 4);
-
-        cr = new Gtk.CellRendererText();
-        let column3 = new Gtk.TreeViewColumn({ title: "Description" });
-        column3.pack_start(cr, true);
-        column3.add_attribute(cr, "markup", 1);
-        column3.set_expand(true);
-        if (this.themes) {
-            column3.set_max_width(300);
-            cr.set_property('wrap-mode', Pango.WrapMode.WORD_CHAR);
-            cr.set_property('wrap-width', 200);
-        }
-        if (this.collection_type == 'applet') {
-            cr.set_property('wrap-mode', Pango.WrapMode.WORD_CHAR);
-            cr.set_property('wrap-width', 450);
-        }
-
-        cr = new Gtk.CellRendererPixbuf();
-        cr.set_property("stock-size", Gtk.IconSize.DND);
-
-        let actionColumn = new Gtk.TreeViewColumn({ title: "Read only" });//icon_name:10
-        actionColumn.pack_start(cr, true);
-        actionColumn.add_attribute(cr, "icon_name", 10);
-        actionColumn.set_expand(true);
-
-        cr = new Gtk.CellRendererPixbuf();
-        cr.set_property("stock-size", Gtk.IconSize.DND);
-
-        let isActiveColumn = new Gtk.TreeViewColumn({ title: "Active" });//icon_name:11
-        isActiveColumn.pack_start (cr, true);
-        isActiveColumn.add_attribute(cr, "icon_name", 11);
-        isActiveColumn.set_expand(true);
-        isActiveColumn.set_cell_data_func(cr, this._is_active_data_func)
-
-        cr = new Gtk.CellRendererPixbuf();
-        cr.set_property("stock-size", Gtk.IconSize.DND)
-
-        let dangerousColumn = new Gtk.TreeViewColumn({ title: "Dangerous" });
-        dangerousColumn.pack_start (cr, true);
-        dangerousColumn.set_expand(true);
-        dangerousColumn.set_cell_data_func(cr, this._is_dangerous_data_func);
-
-        this.treeview.append_column(column2);
-        this.treeview.append_column(column3);
-        this.treeview.append_column(actionColumn);
-        this.treeview.append_column(dangerousColumn);
-        this.treeview.append_column(isActiveColumn);
-        this.treeview.set_headers_visible(false);
-
-        this.model = new Gtk.TreeStore();
-        this.model.set_column_types([
-            GObject.TYPE_STRING, //uuid
-            GObject.TYPE_STRING, //desc
-            GObject.TYPE_INT, //enabled
-            GObject.TYPE_INT, //max-instances
-            GdkPixbuf.Pixbuf, //pixbuf
-            GObject.TYPE_STRING, //icon
-            GObject.TYPE_INT, //name
-            GObject.TYPE_BOOLEAN, //read-only
-            GObject.TYPE_STRING, //hide-config-button
-            GObject.TYPE_LONG, //ext-setting-app
-            GObject.TYPE_STRING, //edit-date
-            GObject.TYPE_STRING, //read-only
-            GObject.TYPE_STRING, //icon
-            GObject.TYPE_INT, //active icon
-            GObject.TYPE_BOOLEAN, //schema file name (for uninstall)
-            GObject.TYPE_BOOLEAN //settings type
-            //version_supported, dangerous
-        ]);
-
-        this.modelfilter = this.model.filter_new(null);
-        this.showFilter = SHOW_ALL;
-        this.modelfilter.set_visible_func(Lang.bind(this, this.only_active));
-
-        this.treeview.set_model(this.modelfilter);
-        this.treeview.connect("query-tooltip", Lang.bind(this, this.on_treeview_query_tooltip));
-        this.treeview.set_search_column(5);
-        let tooltip = new Gtk.Tooltip();
-        tooltip.set_text("test");
-        this.treeview.set_tooltip_cell(tooltip, null, actionColumn, null);
-        this.treeview.set_search_entry(this.search_entry);
-        // Find the enabled extensions
-        if (!this.themes) {
-            this.settings = new Gio.Settings({ schema_id: "org.cinnamon" });
-            this.enabled_extensions = this.settings.get_strv("enabled-%ss".format(this.collection_type));
-        } else {
-            this.settings = new Gio.Settings({ schema_id: "org.cinnamon.theme" });
-            this.enabled_extensions = [this.settings.get_string("name")];
-        }
-        this.load_extensions();
-
-        this.model.set_default_sort_func(Lang.bind(this, this.model_sort_func));
-        this.model.set_sort_column_id(-1, Gtk.SortType.ASCENDING);
-
-        if (this.themes) {
-            this.settings.connect("changed::enabled-%ss".format(this.collection_type), Lang.bind(this, this._enabled_extensions_changed));
-        } else {
-           this.settings.connect("changed::name", Lang.bind(this, this._enabled_extensions_changed));
-        }
-        scrolledWindow.add(this.treeview);
-        this.treeview.connect('button_press_event', Lang.bind(this, this.on_button_press_event));
-
-        if (this.collection_type == "applet") {
-            this.instanceButton = new Gtk.Button({ label: _("Add to panel") });
-            this.removeButton = new Gtk.Button({ label: _("Remove from panel") });
-        } else if (this.collection_type == "desklet") {
-            this.instanceButton = new Gtk.Button({ label: _("Add to desktop") });
-            this.removeButton = new Gtk.Button({ label: _("Remove from desktop") });
-        } else if (this.collection_type == "extension") {
-            this.instanceButton = new Gtk.Button({ label: _("Add to Cinnamon") });
-            this.removeButton = new Gtk.Button({ label: _("Remove from Cinnamon") });
-        } else if (this.collection_type == "theme") {
-            this.instanceButton = new Gtk.Button({ label: _("Apply theme") });
-            this.removeButton = new Gtk.Button({ label: "" }); //Should not be visible for theme
-        } else {
-            this.instanceButton = new Gtk.Button({ label: _("Add") });
-            this.removeButton = new Gtk.Button({ label: _("Remove") });
-        }
-        this.instanceButton.connect("clicked", Lang.bind(this, this._add_another_instance));
-        this.instanceButton.set_sensitive(false);
-
-        this.removeButton.connect("clicked", Lang.bind(this, this._remove_all_instances))
-        this.removeButton.set_sensitive(false);
-
-        this.configureButton = new Gtk.Button({ label: _("Configure") });
-        this.configureButton.connect("clicked", Lang.bind(this, this._configure_extension));
-
-        this.extConfigureButton = new Gtk.Button({ label: _("Configure") });
-        this.extConfigureButton.connect("clicked", Lang.bind(this, this._external_configure_launch));
-
-        let restoreButton;
-        if (this.collection_type == "theme")
-            restoreButton = new Gtk.Button({ label: _("Restore default theme") });
-        else if (this.collection_type == "desklet")
-            restoreButton = new Gtk.Button({ label: _("Remove all desklets") });
-        else if (this.collection_type == "extension")
-            restoreButton = new Gtk.Button({ label: _("Disable all extensions") });
-        else
-            restoreButton = new Gtk.Button({ label: _("Restore to default") });
-
-        restoreButton.connect("clicked", Lang.bind(this, this._restore_default_extensions));
-
-        let hbox = new Gtk.HBox();
-        this.comboshow = new Gtk.ComboBox();
-        let renderer_text = new Gtk.CellRendererText();
-        this.comboshow.pack_start(renderer_text, true);
-        let showTypes = new Gtk.ListStore();
-        showTypes.set_column_types ([GObject.TYPE_INT, GObject.TYPE_STRING]);
-
-        let iter = showTypes.append();
-        showTypes.set (iter, [0], [SHOW_ALL]);
-        showTypes.set (iter, [1], [_("All %ss".format(this.collection_type))]);
-        iter = showTypes.append();
-        showTypes.set (iter, [0], [SHOW_ACTIVE]);
-        showTypes.set (iter, [1], [_("Active %ss".format(this.collection_type))]);
-        iter = showTypes.append();
-        showTypes.set (iter, [0], [SHOW_INACTIVE]);
-        showTypes.set (iter, [1], [_("Inactive %ss".format(this.collection_type))]);
-
-        this.comboshow.set_model(showTypes);
-        this.comboshow.set_entry_text_column(1);
-        this.comboshow.set_active(0); //All
-        this.comboshow.connect('changed', Lang.bind(this, this.comboshow_changed));
-        this.comboshow.add_attribute(renderer_text, "text", 1);
-        this.comboshow.show();
-
-        if (!this.themes) {
-            let showLabel = new Gtk.Label();
-            showLabel.set_text(_("Show"));
-            showLabel.show();
-            hbox.pack_start(showLabel, false, false, 4);
-            hbox.pack_start(this.comboshow, false, false, 2);
-        }
-        hbox.pack_end(this.search_entry, false, false, 4);
-        extensions_vbox.pack_start(hbox, false, false, 4);
-        hbox.set_border_width(3);
-        hbox.show();
-        this.search_entry.show();
-
-        extensions_vbox.pack_start(scrolledWindow, true, true, 0);
-        hbox = new Gtk.HBox();
-        extensions_vbox.pack_start(hbox, false, true, 5);
-
-        let buttonbox = new Gtk.ButtonBox({ orientation: Gtk.Orientation.HORIZONTAL });
-        buttonbox.set_layout(Gtk.ButtonBoxStyle.START);
-        buttonbox.set_spacing(5);
-        hbox.pack_start(buttonbox, true, true, 5);
-        hbox.xalign = 1.0;
-
-        let img = Gtk.Image.new_from_stock("gtk-add", Gtk.IconSize.BUTTON);
-        this.instanceButton.set_image(img);
-        img = Gtk.Image.new_from_stock("gtk-remove", Gtk.IconSize.BUTTON);
-        this.removeButton.set_image(img);
-        img = Gtk.Image.new_from_stock("gtk-properties", Gtk.IconSize.BUTTON);
-        this.configureButton.set_image(img);
-        img = Gtk.Image.new_from_stock("gtk-properties", Gtk.IconSize.BUTTON);
-        this.extConfigureButton.set_image(img);
-
-        buttonbox.pack_start(this.instanceButton, false, false, 0);
-        if (this.collection_type != "theme")
-            buttonbox.pack_start(this.removeButton, false, false, 0);
-        buttonbox.pack_start(this.configureButton, false, false, 0);
-        buttonbox.pack_start(this.extConfigureButton, false, false, 0);
-
-        let rightbuttonbox = new Gtk.ButtonBox({ orientation: Gtk.Orientation.HORIZONTAL });
-        rightbuttonbox.set_layout(Gtk.ButtonBoxStyle.END);
-        rightbuttonbox.pack_start(restoreButton, false, false, 0);
-
-        hbox.pack_end(rightbuttonbox, false, false, 5);
-
-        this.configureButton.hide();
-        this.configureButton.set_no_show_all(true);
-        this.extConfigureButton.hide();
-        this.extConfigureButton.set_no_show_all(true);
-
-        // Get More - Variables prefixed with "gm_" where necessary
-        let gm_scrolled_window = new Gtk.ScrolledWindow();
-        gm_scrolled_window.set_shadow_type(Gtk.ShadowType.ETCHED_IN);
-        gm_scrolled_window.set_border_width(6);
-        let getmore_vbox = new Gtk.VBox();
-        getmore_vbox.set_border_width(0);
-
-        if (this.collection_type == "applet")
-            this.stack.add_titled(getmore_vbox, "more", _("Available applets (online)"));
-        else if (this.collection_type == "desklet")
-            this.stack.add_titled(getmore_vbox, "more", _("Available desklets (online)"));
-        else if (this.collection_type == "extension")
-            this.stack.add_titled(getmore_vbox, "more", _("Available extensions (online)"));
-        else if (this.collection_type == "theme")
-            this.stack.add_titled(getmore_vbox, "more", _("Available themes (online)"));
-
-        this.stack.connect("notify::visible-child-name", Lang.bind(this, this.on_page_changed));
-
-        this.gm_combosort = new Gtk.ComboBox();
-        renderer_text = new Gtk.CellRendererText();
-        this.gm_combosort.pack_start(renderer_text, true);
-
-        let sortTypes = new Gtk.ListStore();
-        sortTypes.set_column_types ([GObject.TYPE_INT, GObject.TYPE_STRING]);
-        sortTypes.append([SORT_NAME, _("Name")]);
-        sortTypes.append([SORT_RATING, _("Popularity")]);
-        sortTypes.append([SORT_DATE_EDITED, _("Date")]);
-
-        this.gm_combosort.set_model(sortTypes);
-        this.gm_combosort.set_entry_text_column(1);
-        this.gm_combosort.set_active(1); //Rating
-        this.gm_combosort.connect('changed', Lang.bind(this, this.gm_changed_sorting));
-        this.gm_combosort.add_attribute(renderer_text, "text", 1);
-        this.gm_combosort.show();
-
-        hbox = new Gtk.HBox();
-        hbox.set_border_width(3);
-        let sortLabel = new Gtk.Label();
-        sortLabel.set_text(_("Sort by"));
-        sortLabel.show();
-        hbox.pack_start(sortLabel, false, false, 4);
-        hbox.pack_start(this.gm_combosort, false, false, 2);
-        hbox.show();
-
-        this.gm_search_entry = new Gtk.Entry();
-        this.gm_search_entry.connect('changed', Lang.bind(this, this.gm_on_entry_refilter));
-        this.gm_search_entry.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, 'edit-find');
-        this.gm_search_entry.set_placeholder_text(_("Search"));
-        hbox.pack_end(this.gm_search_entry, false, false, 4);
-        this.search_entry.show();
-
-        getmore_vbox.pack_start(hbox, false, false, 4);
-
-        // MODEL
-        this.gm_model = new Gtk.TreeStore();
-        this.gm_model.set_column_types([
-           GObject.TYPE_STRING, //uuid
-           GObject.TYPE_STRING, //name
-           GObject.TYPE_INT, //install
-           GdkPixbuf.Pixbuf, //icon pixbuf
-           GObject.TYPE_INT, //score
-           GObject.TYPE_STRING, //name
-           GObject.TYPE_INT //date-edited
-        ]); 
-        this.gm_model.set_sort_column_id(4, Gtk.SortType.DESCENDING);
-
-        // TREE
-        this.gm_modelfilter = this.gm_model.filter_new(null);
-        this.gm_modelfilter.set_visible_func(Lang.bind(this, this.gm_match_func));
-        this.gm_treeview = new Gtk.TreeView();
-        this.gm_treeview.set_rules_hint(true);
-        this.gm_treeview.set_has_tooltip(true);
-
-        let gm_cr = new Gtk.CellRendererToggle();
-        gm_cr.connect("toggled", Lang.bind(this, this.gm_toggled, this.gm_treeview));
-        let gm_column1 = new Gtk.TreeViewColumn({ title: "Install" });
-        gm_column1.pack_start (gm_cr, true);
-        gm_column1.set_cell_data_func(gm_cr, this.gm_celldatafunction_checkbox);
-
-        gm_cr = new Gtk.CellRendererPixbuf();
-        let gm_column2 = new Gtk.TreeViewColumn({ title: "Icon" });
-        gm_column2.pack_start (gm_cr, true);
-        gm_column2.add_attribute(gm_cr, "pixbuf", 3);
-
-        gm_cr = new Gtk.CellRendererText();
-        let gm_column3 = new Gtk.TreeViewColumn({ title: "Description" });//markup=1
-        gm_column3.pack_start (gm_cr, true);
-        gm_column3.set_expand(true);
-        if (this.themes) {
-            gm_column3.set_max_width(300);
-            gm_cr.set_property('wrap-mode', Pango.WrapMode.WORD_CHAR);
-            gm_cr.set_property('wrap-width', 200);
-        }
-        let context = this.gm_treeview.get_style_context();
-        if (Gtk.get_minor_version() >= 12)
-            this.link_color = context.get_color(Gtk.StateFlags.LINK); // Gtk.StateFlags.LINK was introduced in GTK 3.12.
-        else
-            this.link_color = context.get_color(Gtk.StateFlags.NORMAL);
-        this.link_color = "#{0:02x}{1:02x}{2:02x}".format(parseInt(this.link_color.red  * 255),
-                                                   parseInt(this.link_color.green * 255), parseInt(this.link_color.blue * 255));
-
-        cr = new Gtk.CellRendererText();
-        actionColumn = new Gtk.TreeViewColumn({ title: "Action" });
-        actionColumn.pack_start (cr, true);
-        actionColumn.set_cell_data_func(cr, this._gm_action_data_func);
-        actionColumn.set_expand(true);
-
-        cr = new Gtk.CellRendererPixbuf();
-        cr.set_property("stock-size", Gtk.IconSize.DND);
-        let statusColumn = new Gtk.TreeViewColumn({ title: "Status" });
-        statusColumn.pack_start (cr, true);
-        statusColumn.set_cell_data_func(cr, this._gm_status_data_func);
-        statusColumn.set_expand(true);
-
-
-        let right = new Gtk.CellRendererText();
-        right.set_property('xalign', 0.5);
-        let gm_column4 = new Gtk.TreeViewColumn({ title: "Score" });//right, markup=4
-        gm_column4.pack_start (right, true);
-        gm_column4.set_expand(true);
-
-        this.gm_treeview.append_column(gm_column1);
-        this.gm_treeview.append_column(gm_column2);
-        this.gm_treeview.append_column(gm_column3);
-        this.gm_treeview.append_column(actionColumn);
-        this.gm_treeview.append_column(statusColumn);
-        this.gm_treeview.append_column(gm_column4);
-        this.gm_treeview.set_headers_visible(false);
-
-        this.gm_treeview.set_model(this.gm_modelfilter);
-        this.gm_treeview.set_search_column(5);
-        this.gm_treeview.set_search_entry(this.gm_search_entry);
-
-        gm_scrolled_window.add(this.gm_treeview);
-        this.gm_treeview.connect('motion_notify_event', Lang.bind(this, this.gm_on_motion_notify_event));
-        this.gm_treeview.connect('button_press_event', Lang.bind(this, this.gm_on_button_press_event));
-        this.gm_treeview.connect("query-tooltip", Lang.bind(this, this.gm_on_treeview_query_tooltip));
-
-        getmore_vbox.add(gm_scrolled_window);
-
-        hbox = new Gtk.HBox();
-        buttonbox = new Gtk.ButtonBox({ orientation: Gtk.Orientation.HORIZONTAL });
-        buttonbox.set_spacing(6);
-        this.install_button = new Gtk.Button({ label: _("Install or update selected items") });
-        let imageNew = new Gtk.Image({ icon_name: "cs-xlet-update", icon_size: Gtk.IconSize.BUTTON });
-        this.select_updated = new Gtk.Button({ image: imageNew });
-        this.select_updated.set_label(_("Select updated"));
-
-        let reload_button = new Gtk.Button({ label: _("Refresh list") });
-        buttonbox.pack_start(this.install_button, false, false, 2);
-        buttonbox.pack_start(this.select_updated, false, false, 2);
-        buttonbox.pack_end(reload_button, false, false, 2);
-
-        buttonbox.set_child_non_homogeneous(this.install_button, true);
-        buttonbox.set_child_non_homogeneous(this.select_updated, true);
-        buttonbox.set_child_non_homogeneous(reload_button, true);
-
-        hbox.pack_start(buttonbox, true, true, 5);
-        getmore_vbox.pack_end(hbox, false, true, 5);
-
-        reload_button.connect("clicked", Lang.bind(this, function() {
-            this.load_spices(true);
-        }));
-        this.install_button.connect("clicked", Lang.bind(this, this.install_extensions));
-        this.select_updated.connect("clicked", Lang.bind(this, this.select_updated_extensions));
-        this.select_updated.hide();
-        this.select_updated.set_no_show_all(true);
-        this.treeview.get_selection().connect("changed", Lang.bind(this, this._selection_changed));
-        this.install_list = [];
-        this.update_list = {};
-        this.current_num_updates = 0;
-
-        this.spices = new Spices.SpiceHarvester(this.collection_type, this.topWindow);
-
-        let extra_page = this.getAdditionalPage();
-        if (extra_page)
-            this.stack.add_titled(extra_page, "extra", extra_page.label);
-
-        this.content_box.show_all();
-
-        if (!this.themes) {
-            this.spices.scrubConfigDirs(this.enabled_extensions);
-            try {
-                Gio.DBusProxy.new_for_bus(
-                    Gio.BusType.SESSION, Gio.DBusProxyFlags.NONE, null,
-                    "org.Cinnamon", "/org/Cinnamon", "org.Cinnamon",
-                    null, Lang.bind(this. this._on_proxy_ready), null
-                );
-            } catch(e) {
-                this._proxy = null;
+        if (!this.isLoaded) {
+            SettingsWidgets.SidePage.prototype.load.call(this);
+            this.running_uuids = null;
+            this._proxy = null;
+            this._signals = [];
+
+            let scrolledWindow = new Gtk.ScrolledWindow();
+            scrolledWindow.set_shadow_type(Gtk.ShadowType.ETCHED_IN);
+            scrolledWindow.set_border_width(6);
+
+            this.stack = new SettingsWidgets.SettingsStack();
+
+            this.stack_switcher = new Gtk.StackSwitcher();
+            this.stack_switcher.set_halign(Gtk.Align.CENTER);
+            this.stack_switcher.set_stack(this.stack);
+            this.stack_switcher.set_homogeneous(true);
+
+            this.vbox = new Gtk.VBox();
+            this.vbox.pack_start(this.stack_switcher, false, true, 2);
+            this.vbox.pack_start(this.stack, true, true, 2);
+            this.vbox.expand = true;
+            this.add_widget(this.vbox);
+
+            let extensions_vbox = new Gtk.VBox();
+
+            this.search_entry = new Gtk.Entry();
+            this.search_entry.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, 'edit-find-symbolic');
+            this.search_entry.set_placeholder_text(_("Search"));
+            this.search_entry.connect('changed', Lang.bind(this, this.on_entry_refilter));
+
+            if (this.collection_type == "applet")
+                this.stack.add_titled(extensions_vbox, "installed", _("Installed applets"));
+            else if (this.collection_type == "desklet")
+                this.stack.add_titled(extensions_vbox, "installed", _("Installed desklets"));
+            else if (this.collection_type == "extension")
+                this.stack.add_titled(extensions_vbox, "installed", _("Installed extensions"));
+            else if (this.collection_type == "theme")
+                this.stack.add_titled(extensions_vbox, "installed", _("Installed themes"));
+
+            this.stack.expand = true;
+
+            this.treeview = new Gtk.TreeView();
+            this.treeview.set_rules_hint(true);
+            this.treeview.set_has_tooltip(true);
+            if (this.themes)
+                this.treeview.connect("row-activated", Lang.bind(this, this.on_row_activated));
+
+            let cr = new Gtk.CellRendererPixbuf();
+            let column2 = new Gtk.TreeViewColumn({ title: "Icon" });
+            column2.pack_start (cr, true);
+            column2.set_min_width(50);
+            column2.add_attribute(cr, "pixbuf", 4);
+
+            cr = new Gtk.CellRendererText();
+            let column3 = new Gtk.TreeViewColumn({ title: "Description" });
+            column3.pack_start(cr, true);
+            column3.add_attribute(cr, "markup", 1);
+            column3.set_expand(true);
+            if (this.themes) {
+                column3.set_max_width(300);
+                cr.set_property('wrap-mode', Pango.WrapMode.WORD_CHAR);
+                cr.set_property('wrap-width', 200);
             }
+            if (this.collection_type == 'applet') {
+                cr.set_property('wrap-mode', Pango.WrapMode.WORD_CHAR);
+                cr.set_property('wrap-width', 450);
+            }
+
+            cr = new Gtk.CellRendererPixbuf();
+            cr.set_property("stock-size", Gtk.IconSize.DND);
+
+            this.readOnlyColumn = new Gtk.TreeViewColumn({ title: "Read only" });//icon_name:10
+            this.readOnlyColumn.pack_start(cr, true);
+            this.readOnlyColumn.add_attribute(cr, "icon_name", 10);
+            this.readOnlyColumn.set_expand(true);
+
+            cr = new Gtk.CellRendererPixbuf();
+            cr.set_property("stock-size", Gtk.IconSize.DND);
+
+            this.isActiveColumn = new Gtk.TreeViewColumn({ title: "Active" });//icon_name:11
+            this.isActiveColumn.pack_start (cr, true);
+            this.isActiveColumn.add_attribute(cr, "icon_name", 11);
+            this.isActiveColumn.set_expand(true);
+            this.isActiveColumn.set_cell_data_func(cr, this._is_active_data_func)
+
+            cr = new Gtk.CellRendererPixbuf();
+            cr.set_property("stock-size", Gtk.IconSize.DND)
+
+            this.dangerousColumn = new Gtk.TreeViewColumn({ title: "Dangerous" });
+            this.dangerousColumn.pack_start (cr, true);
+            this.dangerousColumn.set_expand(true);
+            this.dangerousColumn.set_cell_data_func(cr, this._is_dangerous_data_func);
+
+            this.treeview.append_column(column2);
+            this.treeview.append_column(column3);
+            this.treeview.append_column(this.readOnlyColumn);
+            this.treeview.append_column(this.dangerousColumn);
+            this.treeview.append_column(this.isActiveColumn);
+            this.treeview.set_headers_visible(false);
+
+            this.model = new Gtk.TreeStore();
+            this.model.set_column_types([
+                GObject.TYPE_STRING, //uuid
+                GObject.TYPE_STRING, //desc
+                GObject.TYPE_INT, //enabled
+                GObject.TYPE_INT, //max-instances
+                GdkPixbuf.Pixbuf, //pixbuf
+                GObject.TYPE_STRING, //icon
+                GObject.TYPE_INT, //name
+                GObject.TYPE_BOOLEAN, //read-only
+                GObject.TYPE_STRING, //hide-config-button
+                GObject.TYPE_LONG, //ext-setting-app
+                GObject.TYPE_STRING, //edit-date
+                GObject.TYPE_STRING, //read-only
+                GObject.TYPE_STRING, //icon
+                GObject.TYPE_INT, //active icon
+                GObject.TYPE_BOOLEAN, //schema file name (for uninstall)
+                GObject.TYPE_BOOLEAN //settings type
+                //version_supported, dangerous
+            ]);
+
+            this.modelfilter = this.model.filter_new(null);
+            this.showFilter = SHOW_ALL;
+            this.modelfilter.set_visible_func(Lang.bind(this, this.only_active));
+
+            this.treeview.set_model(this.modelfilter);
+            this.treeview.connect("query-tooltip", Lang.bind(this, this.on_treeview_query_tooltip));
+            this.treeview.set_search_column(5);
+            let tooltip = new Gtk.Tooltip();
+            this.treeview.set_tooltip_cell(tooltip, null, this.readOnlyColumn, null);
+            this.treeview.set_search_entry(this.search_entry);
+            // Find the enabled extensions
+            if (!this.themes) {
+                this.settings = new Gio.Settings({ schema_id: "org.cinnamon" });
+                this.enabled_extensions = this.settings.get_strv("enabled-%ss".format(this.collection_type));
+            } else {
+                this.settings = new Gio.Settings({ schema_id: "org.cinnamon.theme" });
+                this.enabled_extensions = [this.settings.get_string("name")];
+            }
+            this.load_extensions();
+
+            this.model.set_default_sort_func(Lang.bind(this, this.model_sort_func));
+            this.model.set_sort_column_id(-1, Gtk.SortType.ASCENDING);
+
+            if (this.themes) {
+                this.settings.connect("changed::enabled-%ss".format(this.collection_type), Lang.bind(this, this._enabled_extensions_changed));
+            } else {
+               this.settings.connect("changed::name", Lang.bind(this, this._enabled_extensions_changed));
+            }
+            scrolledWindow.add(this.treeview);
+            this.treeview.connect('button_press_event', Lang.bind(this, this.on_button_press_event));
+
+            if (this.collection_type == "applet") {
+                this.instanceButton = new Gtk.Button({ label: _("Add to panel") });
+                this.removeButton = new Gtk.Button({ label: _("Remove from panel") });
+            } else if (this.collection_type == "desklet") {
+                this.instanceButton = new Gtk.Button({ label: _("Add to desktop") });
+                this.removeButton = new Gtk.Button({ label: _("Remove from desktop") });
+            } else if (this.collection_type == "extension") {
+                this.instanceButton = new Gtk.Button({ label: _("Add to Cinnamon") });
+                this.removeButton = new Gtk.Button({ label: _("Remove from Cinnamon") });
+            } else if (this.collection_type == "theme") {
+                this.instanceButton = new Gtk.Button({ label: _("Apply theme") });
+                this.removeButton = new Gtk.Button({ label: "" }); //Should not be visible for theme
+            } else {
+                this.instanceButton = new Gtk.Button({ label: _("Add") });
+                this.removeButton = new Gtk.Button({ label: _("Remove") });
+            }
+            this.instanceButton.connect("clicked", Lang.bind(this, this._add_another_instance));
+            this.instanceButton.set_sensitive(false);
+
+            this.removeButton.connect("clicked", Lang.bind(this, this._remove_all_instances))
+            this.removeButton.set_sensitive(false);
+
+            this.configureButton = new Gtk.Button({ label: _("Configure") });
+            this.configureButton.connect("clicked", Lang.bind(this, this._configure_extension));
+
+            this.extConfigureButton = new Gtk.Button({ label: _("Configure") });
+            this.extConfigureButton.connect("clicked", Lang.bind(this, this._external_configure_launch));
+
+            let restoreButton;
+            if (this.collection_type == "theme")
+                restoreButton = new Gtk.Button({ label: _("Restore default theme") });
+            else if (this.collection_type == "desklet")
+                restoreButton = new Gtk.Button({ label: _("Remove all desklets") });
+            else if (this.collection_type == "extension")
+                restoreButton = new Gtk.Button({ label: _("Disable all extensions") });
+            else
+                restoreButton = new Gtk.Button({ label: _("Restore to default") });
+
+            restoreButton.connect("clicked", Lang.bind(this, this._restore_default_extensions));
+
+            let hbox = new Gtk.HBox();
+            this.comboshow = new Gtk.ComboBox();
+            let renderer_text = new Gtk.CellRendererText();
+            this.comboshow.pack_start(renderer_text, true);
+            let showTypes = new Gtk.ListStore();
+            showTypes.set_column_types ([GObject.TYPE_INT, GObject.TYPE_STRING]);
+            showTypes.set(showTypes.append(), [0, 1], [SHOW_ALL, _("All %ss".format(this.collection_type))]);
+            showTypes.set(showTypes.append(), [0, 1], [SHOW_ACTIVE, _("Active %ss".format(this.collection_type))]);
+            showTypes.set(showTypes.append(), [0, 1], [SHOW_INACTIVE, _("Inactive %ss".format(this.collection_type))]);
+
+            this.comboshow.set_model(showTypes);
+            this.comboshow.set_entry_text_column(1);
+            this.comboshow.set_active(0); //All
+            this.comboshow.connect('changed', Lang.bind(this, this.comboshow_changed));
+            this.comboshow.add_attribute(renderer_text, "text", 1);
+            this.comboshow.show();
+
+            if (!this.themes) {
+                let showLabel = new Gtk.Label();
+                showLabel.set_text(_("Show"));
+                showLabel.show();
+                hbox.pack_start(showLabel, false, false, 4);
+                hbox.pack_start(this.comboshow, false, false, 2);
+            }
+            hbox.pack_end(this.search_entry, false, false, 4);
+            extensions_vbox.pack_start(hbox, false, false, 4);
+            hbox.set_border_width(3);
+            hbox.show();
+            this.search_entry.show();
+
+            extensions_vbox.pack_start(scrolledWindow, true, true, 0);
+            hbox = new Gtk.HBox();
+            extensions_vbox.pack_start(hbox, false, true, 5);
+
+            let buttonbox = new Gtk.ButtonBox({ orientation: Gtk.Orientation.HORIZONTAL });
+            buttonbox.set_layout(Gtk.ButtonBoxStyle.START);
+            buttonbox.set_spacing(5);
+            hbox.pack_start(buttonbox, true, true, 5);
+            hbox.xalign = 1.0;
+
+            let img = Gtk.Image.new_from_stock("gtk-add", Gtk.IconSize.BUTTON);
+            this.instanceButton.set_image(img);
+            img = Gtk.Image.new_from_stock("gtk-remove", Gtk.IconSize.BUTTON);
+            this.removeButton.set_image(img);
+            img = Gtk.Image.new_from_stock("gtk-properties", Gtk.IconSize.BUTTON);
+            this.configureButton.set_image(img);
+            img = Gtk.Image.new_from_stock("gtk-properties", Gtk.IconSize.BUTTON);
+            this.extConfigureButton.set_image(img);
+
+            buttonbox.pack_start(this.instanceButton, false, false, 0);
+            if (this.collection_type != "theme")
+                buttonbox.pack_start(this.removeButton, false, false, 0);
+            buttonbox.pack_start(this.configureButton, false, false, 0);
+            buttonbox.pack_start(this.extConfigureButton, false, false, 0);
+
+            let rightbuttonbox = new Gtk.ButtonBox({ orientation: Gtk.Orientation.HORIZONTAL });
+            rightbuttonbox.set_layout(Gtk.ButtonBoxStyle.END);
+            rightbuttonbox.pack_start(restoreButton, false, false, 0);
+
+            hbox.pack_end(rightbuttonbox, false, false, 5);
+
+            this.configureButton.hide();
+            this.configureButton.set_no_show_all(true);
+            this.extConfigureButton.hide();
+            this.extConfigureButton.set_no_show_all(true);
+
+            // Get More - Variables prefixed with "gm_" where necessary
+            let gm_scrolled_window = new Gtk.ScrolledWindow();
+            gm_scrolled_window.set_shadow_type(Gtk.ShadowType.ETCHED_IN);
+            gm_scrolled_window.set_border_width(6);
+            let getmore_vbox = new Gtk.VBox();
+            getmore_vbox.set_border_width(0);
+
+            if (this.collection_type == "applet")
+                this.stack.add_titled(getmore_vbox, "more", _("Available applets (online)"));
+            else if (this.collection_type == "desklet")
+                this.stack.add_titled(getmore_vbox, "more", _("Available desklets (online)"));
+            else if (this.collection_type == "extension")
+                this.stack.add_titled(getmore_vbox, "more", _("Available extensions (online)"));
+            else if (this.collection_type == "theme")
+                this.stack.add_titled(getmore_vbox, "more", _("Available themes (online)"));
+
+            this.stack.connect("notify::visible-child-name", Lang.bind(this, this.on_page_changed));
+
+            this.gm_combosort = new Gtk.ComboBox();
+            renderer_text = new Gtk.CellRendererText();
+            this.gm_combosort.pack_start(renderer_text, true);
+
+            let sortTypes = new Gtk.ListStore();
+            sortTypes.set_column_types ([GObject.TYPE_INT, GObject.TYPE_STRING]);
+            sortTypes.set(sortTypes.append(), [0, 1], [SORT_NAME, _("Name")]);
+            sortTypes.set(sortTypes.append(), [0, 1], [SORT_RATING, _("Popularity")]);
+            sortTypes.set(sortTypes.append(), [0, 1], [SORT_DATE_EDITED, _("Date")]);
+
+            this.gm_combosort.set_model(sortTypes);
+            this.gm_combosort.set_entry_text_column(1);
+            this.gm_combosort.set_active(1); //Rating
+            this.gm_combosort.connect('changed', Lang.bind(this, this.gm_changed_sorting));
+            this.gm_combosort.add_attribute(renderer_text, "text", 1);
+            this.gm_combosort.show();
+
+            hbox = new Gtk.HBox();
+            hbox.set_border_width(3);
+            let sortLabel = new Gtk.Label();
+            sortLabel.set_text(_("Sort by"));
+            sortLabel.show();
+            hbox.pack_start(sortLabel, false, false, 4);
+            hbox.pack_start(this.gm_combosort, false, false, 2);
+            hbox.show();
+
+            this.gm_search_entry = new Gtk.Entry();
+            this.gm_search_entry.connect('changed', Lang.bind(this, this.gm_on_entry_refilter));
+            this.gm_search_entry.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, 'edit-find');
+            this.gm_search_entry.set_placeholder_text(_("Search"));
+            hbox.pack_end(this.gm_search_entry, false, false, 4);
+            this.search_entry.show();
+
+            getmore_vbox.pack_start(hbox, false, false, 4);
+
+            // MODEL
+            this.gm_model = new Gtk.TreeStore();
+            this.gm_model.set_column_types([
+                GObject.TYPE_STRING, //uuid
+                GObject.TYPE_STRING, //name
+                GObject.TYPE_INT, //install
+                GdkPixbuf.Pixbuf, //icon pixbuf
+                GObject.TYPE_INT, //score
+                GObject.TYPE_STRING, //name
+                GObject.TYPE_INT //date-edited
+            ]); 
+            this.gm_model.set_sort_column_id(4, Gtk.SortType.DESCENDING);
+
+            // TREE
+            this.gm_modelfilter = this.gm_model.filter_new(null);
+            this.gm_modelfilter.set_visible_func(Lang.bind(this, this.gm_match_func));
+            this.gm_treeview = new Gtk.TreeView();
+            this.gm_treeview.set_rules_hint(true);
+            this.gm_treeview.set_has_tooltip(true);
+
+            let gm_cr = new Gtk.CellRendererToggle();
+            gm_cr.connect("toggled", Lang.bind(this, this.gm_toggled, this.gm_treeview));
+            let gm_column1 = new Gtk.TreeViewColumn({ title: "Install" });
+            gm_column1.pack_start(gm_cr, true);
+            gm_column1.set_cell_data_func(gm_cr, Lang.bind(this, this.gm_celldatafunction_checkbox));
+
+            gm_cr = new Gtk.CellRendererPixbuf();
+            let gm_column2 = new Gtk.TreeViewColumn({ title: "Icon" });
+            gm_column2.pack_start(gm_cr, true);
+            gm_column2.add_attribute(gm_cr, "pixbuf", 3);
+
+            gm_cr = new Gtk.CellRendererText();
+            let gm_column3 = new Gtk.TreeViewColumn({ title: "Description" });//markup=1
+            gm_column3.pack_start(gm_cr, true);
+            gm_column3.add_attribute(gm_cr, "markup", 1);
+            gm_column3.set_expand(true);
+            if (this.themes) {
+                gm_column3.set_max_width(300);
+                gm_cr.set_property('wrap-mode', Pango.WrapMode.WORD_CHAR);
+                gm_cr.set_property('wrap-width', 200);
+            }
+            let context = this.gm_treeview.get_style_context();
+            if (Gtk.get_minor_version() >= 12)
+                this.link_color = context.get_color(Gtk.StateFlags.LINK); // Gtk.StateFlags.LINK was introduced in GTK 3.12.
+            else
+                this.link_color = context.get_color(Gtk.StateFlags.NORMAL);
+            let color = new Clutter.Color({ 
+                red: this.link_color.red  * 255, green: this.link_color.green * 255,
+                blue: this.link_color.blue * 255, alpha: 255
+            });
+            this.link_color = color.to_string();
+            cr = new Gtk.CellRendererText();
+            this.linkColumn = new Gtk.TreeViewColumn({ title: "Action" });
+            this.linkColumn.pack_start(cr, true);
+            this.linkColumn.set_cell_data_func(cr, Lang.bind(this, this._gm_action_data_func));
+            this.linkColumn.set_expand(true);
+
+            cr = new Gtk.CellRendererPixbuf();
+            cr.set_property("stock-size", Gtk.IconSize.DND);
+            this.statusColumn = new Gtk.TreeViewColumn({ title: "Status" });
+            this.statusColumn.pack_start(cr, true);
+            this.statusColumn.set_cell_data_func(cr, Lang.bind(this, this._gm_status_data_func));
+            this.statusColumn.set_expand(true);
+
+            let right = new Gtk.CellRendererText();
+            right.set_property('xalign', 0.5);
+            let gm_column4 = new Gtk.TreeViewColumn({ title: "Score" });//right, markup=4
+            gm_column4.pack_start(right, true);
+            gm_column4.add_attribute(right, "markup", 4);
+            gm_column4.set_expand(true);
+
+            this.gm_treeview.append_column(gm_column1);
+            this.gm_treeview.append_column(gm_column2);
+            this.gm_treeview.append_column(gm_column3);
+            this.gm_treeview.append_column(this.linkColumn);
+            this.gm_treeview.append_column(this.statusColumn);
+            this.gm_treeview.append_column(gm_column4);
+            this.gm_treeview.set_headers_visible(false);
+
+            this.gm_treeview.set_model(this.gm_modelfilter);
+            this.gm_treeview.set_search_column(5);
+            this.gm_treeview.set_search_entry(this.gm_search_entry);
+
+            gm_scrolled_window.add(this.gm_treeview);
+            this.gm_treeview.connect('motion_notify_event', Lang.bind(this, this.gm_on_motion_notify_event));
+            this.gm_treeview.connect('button_press_event', Lang.bind(this, this.gm_on_button_press_event));
+            this.gm_treeview.connect("query-tooltip", Lang.bind(this, this.gm_on_treeview_query_tooltip));
+
+            getmore_vbox.add(gm_scrolled_window);
+
+            hbox = new Gtk.HBox();
+            buttonbox = new Gtk.ButtonBox({ orientation: Gtk.Orientation.HORIZONTAL });
+            buttonbox.set_spacing(6);
+            this.install_button = new Gtk.Button({ label: _("Install or update selected items") });
+            let imageNew = new Gtk.Image({ icon_name: "cs-xlet-update", icon_size: Gtk.IconSize.BUTTON });
+            this.select_updated = new Gtk.Button({ image: imageNew });
+            this.select_updated.set_label(_("Select updated"));
+
+            let reload_button = new Gtk.Button({ label: _("Refresh list") });
+            buttonbox.pack_start(this.install_button, false, false, 2);
+            buttonbox.pack_start(this.select_updated, false, false, 2);
+            buttonbox.pack_end(reload_button, false, false, 2);
+
+            buttonbox.set_child_non_homogeneous(this.install_button, true);
+            buttonbox.set_child_non_homogeneous(this.select_updated, true);
+            buttonbox.set_child_non_homogeneous(reload_button, true);
+
+            hbox.pack_start(buttonbox, true, true, 5);
+            getmore_vbox.pack_end(hbox, false, true, 5);
+
+            reload_button.connect("clicked", Lang.bind(this, function() {
+                this.load_spices(true);
+            }));
+            this.install_button.connect("clicked", Lang.bind(this, this.install_extensions));
+            this.select_updated.connect("clicked", Lang.bind(this, this.select_updated_extensions));
+            this.select_updated.hide();
+            this.select_updated.set_no_show_all(true);
+            this.treeview.get_selection().connect("changed", Lang.bind(this, this._selection_changed));
+            this.install_list = [];
+            this.update_list = {};
+            this.current_num_updates = 0;
+
+            this.spices = new Spices.SpiceHarvester(this.collection_type, this.topWindow);
+
+            let extra_page = this.getAdditionalPage();
+            if (extra_page)
+                this.stack.add_titled(extra_page, "extra", extra_page.label);
+
+            if (!this.themes) {
+                this.spices.scrubConfigDirs(this.enabled_extensions);
+                try {
+                    Gio.DBusProxy.new_for_bus(
+                        Gio.BusType.SESSION, Gio.DBusProxyFlags.NONE, null,
+                        "org.Cinnamon", "/org/Cinnamon", "org.Cinnamon",
+                        null, Lang.bind(this. this._on_proxy_ready), null
+                    );
+                } catch(e) {
+                    this._proxy = null;
+                }
+            }
+            this.search_entry.grab_focus();
         }
-        this.search_entry.grab_focus();
     },
 
     refresh_running_uuids: function() {
@@ -612,7 +608,7 @@ const ExtensionSidePage = new GObject.Class({
         }
     },
 
-    _on_proxy_ready: function(object, result, data) {//data=null
+    _on_proxy_ready: function(object, result, data) {
         this._proxy = Gio.DBusProxy.new_for_bus_finish(result);
         this._proxy.connect("g-signal", Lang.bind(this, this._on_signal));
         this._enabled_extensions_changed();
@@ -638,13 +634,13 @@ const ExtensionSidePage = new GObject.Class({
         }
     },
 
-    check_third_arg: function() {
-        if ((sys.argv.length > 2) && (!this.run_once)) {
-            for (row in this.model) {
+    check_third_arg: function(args) {
+        if ((argv.length > 2) && (!this.run_once)) {
+            for (let row in this.model) {
                 let uuid = this.model.get_value(row.iter, 0);
                 if (uuid == sys.argv[2]) {
                     let path = this.model.get_path(row.iter);
-                    filtered = this.treeview.get_model().convert_child_path_to_path(path);
+                    let filtered = this.treeview.get_model().convert_child_path_to_path(path);
                     if (filtered != null) {
                         this.treeview.get_selection().select_path(filtered);
                         this.treeview.scroll_to_cell(filtered, null, false, 0, 0);
@@ -668,13 +664,13 @@ const ExtensionSidePage = new GObject.Class({
         if (pathOk) {
             let [ok, iter] = this.modelfilter.get_iter(path);
             if(ok) {
-                if (column.get_property('title', "Read only") == "Read only") {
+                if (column == this.readOnlyColumn) {
                     if (!this.modelfilter.get_value(iter, 6)) {
                         tooltip.set_text(_("Cannot be uninstalled"));
                         return true;
                     }
                     return false;
-                } else if (column.get_property('title', "Active") == "Active") {
+                } else if (column == this.isActiveColumn) {
                     let count = this.modelfilter.get_value(iter, 2);
                     let markup = "";
                     if (count > 0) {
@@ -688,9 +684,9 @@ const ExtensionSidePage = new GObject.Class({
                         tooltip.set_markup(markup);
                         return true;
                     }
-                } else if (column.get_property('title', "Dangerous") == "Dangerous") {
+                } else if (column == this.dangerousColumn) {
                     if (this.modelfilter.get_value(iter, 15)) {   // Dangerous?
-                        msg = _("\"This extension utilizes system calls that could potentially\
+                        let msg = _("\"This extension utilizes system calls that could potentially\
                                  cause your desktop to slow down or freeze in some hardware \
                                  configurations. If you experience anything like this, try disabling \
                                  this extension and restarting Cinnamon.\"");
@@ -707,21 +703,23 @@ const ExtensionSidePage = new GObject.Class({
     gm_on_treeview_query_tooltip: function(treeview, x, y, keyboard_mode, tooltip) {
         let [pathOk, path, column, cell_x, cell_y] = treeview.get_path_at_pos(x, y);
         if (pathOk) {
-            iter = this.gm_modelfilter.get_iter(path);
-            if (column.get_property('title', "Status") == "Status") {
-                let uuid = this.gm_modelfilter.get_value(iter, 0);
-                let date = this.gm_modelfilter.get_value(iter, 6);
-                let [installed, can_update, is_active] = this.version_compare(uuid, date);
-                if (installed) {
-                    if (can_update)
-                        tooltip.set_text(_("Update available"));
-                    else
-                        tooltip.set_text(_("Installed and up-to-date"));
+            let [ok, iter] = this.gm_modelfilter.get_iter(path);
+            if(ok) {
+                if (column == this.statusColumn) {
+                    let uuid = this.gm_modelfilter.get_value(iter, 0);
+                    let date = this.gm_modelfilter.get_value(iter, 6);
+                    let [installed, can_update, is_active] = this.version_compare(uuid, date);
+                    if (installed) {
+                        if (can_update)
+                            tooltip.set_text(_("Update available"));
+                        else
+                            tooltip.set_text(_("Installed and up-to-date"));
+                        return true;
+                    }
+                } else if (column.get_property('title', "Score") == "Score") {
+                    tooltip.set_text(_("Popularity"));
                     return true;
                 }
-            } else if (column.get_property('title', "Score") == "Score") {
-                tooltip.set_text(_("Popularity"));
-                return true;
             }
         }
         return false;
@@ -736,25 +734,29 @@ const ExtensionSidePage = new GObject.Class({
     },
 
     on_row_activated: function(treeview, path, column) { // Only used in themes
-        let iter = this.modelfilter.get_iter(path);
-        let uuid = this.modelfilter.get_value(iter, 0);
-        let name = this.modelfilter.get_value(iter, 5);
-        this.enable_extension(uuid, name);
+        let [ok, iter] = this.modelfilter.get_iter(path);
+        if(ok) {
+            let uuid = this.modelfilter.get_value(iter, 0);
+            let name = this.modelfilter.get_value(iter, 5);
+            this.enable_extension(uuid, name);
+        }
     },
 
     on_button_press_event: function(widget, event) {
         if (event.button == 3) {
-            let [pathOk, path, column, cell_x, cell_y] = widget.get_path_at_pos(parseInt(event.x), parseInt(event.y));
+            let [ok, x, y] = event.get_coords();
+            let [pathOk, path, column, cell_x, cell_y] = widget.get_path_at_pos(parseInt(x), parseInt(y));
             if (pathOk) {
                 let sel = [];
                 let item;
                 let indices = path.get_indices();
-                let iter = this.modelfilter.get_iter(path);
-
-                for (let i in this.treeview.get_selection().get_selected_rows()[1])
-                    sel.push(i.get_indices()[0]);
-
-                if (sel) {
+                let [ok, iter] = this.modelfilter.get_iter(path);
+                if(ok) {
+                    for (let i in this.treeview.get_selection().get_selected_rows()[1]) {
+                        sel.push(i.get_indices()[0]);
+                    }
+                }
+                if (sel.length > 0) {
                     popup = new Gtk.Menu();
                     popup.attach_to_widget(this.treeview, null);
 
@@ -845,7 +847,7 @@ const ExtensionSidePage = new GObject.Class({
         return false;
     },
 
-    _is_active_data_func: function(column, cell, model, iter, data) {//data=null
+    _is_active_data_func: function(column, cell, model, iter, data) {
         let enabled = (model.get_value(iter, 2) > 0);
         let error = (model.get_value(iter, 2) < 0);
         let icon = "";
@@ -861,7 +863,7 @@ const ExtensionSidePage = new GObject.Class({
         cell.set_property('icon-name', icon);
     },
 
-    _is_dangerous_data_func: function(column, cell, model, iter, data) { //data=null
+    _is_dangerous_data_func: function(column, cell, model, iter, data) {
         let dangerous = model.get_value(iter, 15);
         let icon = "";
         if (dangerous)
@@ -884,6 +886,7 @@ const ExtensionSidePage = new GObject.Class({
         let can_update = false;
         let is_active = false;
         let [ok, installed_iter] = this.model.get_iter_first();
+        let installed_uuid, installed_date;
         while (ok) {
             installed_uuid = this.model.get_value(installed_iter, 0);
             installed_date = this.model.get_value(installed_iter, 9);
@@ -899,15 +902,18 @@ const ExtensionSidePage = new GObject.Class({
     },
 
     gm_view_details: function(uuid) {
-        this.spices.show_detail(uuid, Lang.bind(this, function(item, uuid) {
+        this.spices.showDetail(uuid, Lang.bind(this, function(item, uuid) {
             this.gm_mark(uuid, true);
         }, uuid));
     },
 
     gm_mark: function(uuid, shouldMark) {// shouldMark=true
+        let marked = 0;
+        if (shouldMark)
+            marked = 1;
         for (row in this.gm_model) {
             if (uuid == this.gm_model.get_value(row.iter, 0)) {
-                //this.gm_model.set_value(row.iter, 2, 1 if shouldMark else 0);
+                this.gm_model.set_value(row.iter, 2, marked);
                 let date = this.gm_model.get_value(row.iter, 6);
             }
         }
@@ -931,39 +937,38 @@ const ExtensionSidePage = new GObject.Class({
     },
 
     gm_on_motion_notify_event: function(widget, event) {
-        let [pathOk, path, column, cell_x, cell_y] = widget.get_path_at_pos(parseInt(event.x), parseInt(event.y));
+        let [ok, x, y] = event.get_coords();
+        let [pathOk, path, column, cell_x, cell_y] = widget.get_path_at_pos(parseInt(x), parseInt(y));
         if (pathOk) {
-            let iter = this.gm_modelfilter.get_iter(path);
-            if ((column.get_property('title', "Action") == "Action") && (iter != null)) {
-                this.gm_treeview.get_window().set_cursor(Gdk.Cursor.new(Gdk.CursorType.HAND2));
-                return;
+            let [ok, iter] = this.gm_modelfilter.get_iter(path);
+            this.gm_modelfilter.get_value(iter, 0);
+            if (ok && (column == this.linkColumn)) {
+                this.topWindow.window.set_cursor(Gdk.Cursor.new(Gdk.CursorType.HAND2));
+                return false;
             }
         }
-        this.gm_treeview.get_window().set_cursor(Gdk.Cursor.new(Gdk.CursorType.ARROW));
+        this.topWindow.window.set_cursor(Gdk.Cursor.new(Gdk.CursorType.ARROW));
+        return false;
     },
 
-    gm_on_button_press_event: function(widget, event) {
-        let [pathOk, path, column, cell_x, cell_y] = widget.get_path_at_pos(parseInt(event.x), parseInt(event.y));
-        if (event.button == 1) {
-            if (pathOk) {
-                let column;
-                let y = data;
-                if (column.get_property('title', "Action") == "Action") {
-                    let iter = this.gm_modelfilter.get_iter(path);
-                    let uuid = this.gm_modelfilter.get_value(iter, 0);
-                    this.gm_view_details(uuid);
-                    return false;
-                }
-            }
+    gm_on_button_press_event: function(widget, event, data) {
+        let [ok, x, y] = event.get_coords();
+        let [pathOk, path, column, cell_x, cell_y] = widget.get_path_at_pos(parseInt(x), parseInt(y));
+        let [ok, button] = event.get_button();
+        if ((pathOk) && (button == 1) && (column == this.linkColumn)) {
+            let [, iter] = this.gm_modelfilter.get_iter(path);
+            let uuid = this.gm_modelfilter.get_value(iter, 0);
+            this.gm_view_details(uuid);
+            return false;
         }
         if (event.button == 3) {
             if (pathOk) {
                 let sel = [];
                 let cy = data;
                 let indices = path.get_indices();
-                let iter = this.gm_modelfilter.get_iter(path);
+                let [ok, iter] = this.gm_modelfilter.get_iter(path);
 
-                for (i in this.gm_treeview.get_selection().get_selected_rows()[1])
+                for (let i in this.gm_treeview.get_selection().get_selected_rows()[1])
                     sel.push(i.get_indices()[0]);
 
                 if (sel) {
@@ -1040,12 +1045,12 @@ const ExtensionSidePage = new GObject.Class({
                 this.update_list[uuid] = true;
             } else {
                 name = "cs-xlet-installed";
-                if (uuid in this.update_list.keys())
+                if (uuid in this.update_list)
                     delete this.update_list[uuid];
             }
         } else {
             name = "";
-            if (uuid in this.update_list.keys())
+            if (uuid in this.update_list)
                 delete this.update_list[uuid];
         }
         cell.set_property("icon-name", name);
@@ -1053,10 +1058,10 @@ const ExtensionSidePage = new GObject.Class({
     },
 
     gm_toggled: function(renderer, path, treeview) {
-        let iter = this.gm_modelfilter.get_iter(path);
-        if (iter != null) {
-            uuid = this.gm_modelfilter.get_value(iter, 0);
-            checked = this.gm_modelfilter.get_value(iter, 2);
+        let [ok, iter] = this.gm_modelfilter.get_iter(path);
+        if (ok) {
+            let uuid = this.gm_modelfilter.get_value(iter, 0);
+            let checked = this.gm_modelfilter.get_value(iter, 2);
             if (checked == true)
                 this.gm_mark(uuid, false);
             else
@@ -1064,7 +1069,7 @@ const ExtensionSidePage = new GObject.Class({
         }
     },
 
-    gm_celldatafunction_checkbox: function(column, cell, model, iter, data) { // data=null
+    gm_celldatafunction_checkbox: function(column, cell, model, iter, data) {
         let uuid = model.get_value(iter, 0);
         let date = model.get_value(iter, 6);
         let checked = model.get_value(iter, 2);
@@ -1076,34 +1081,32 @@ const ExtensionSidePage = new GObject.Class({
             cell.set_property("active", false);
     },
 
-    only_active: function(model, iterr, data) { //data=null
+    only_active: function(model, iter, data) {
         let query = this.search_entry.get_buffer().get_text().toLowerCase();
-        let extensionName = model.get_value(iterr, 5);
-
-        let enabled = model.get_value(iterr, 2);
-
+        let extensionName = model.get_value(iter, 5);
+        let enabled = model.get_value(iter, 2);
         if (extensionName == null)
             return false;
+        let math = ((query.length == 0) || (extensionName.toLowerCase().indexOf(query.toLowerCase()) != -1))
 
         if (this.showFilter == SHOW_ALL)
-            return ((query == "") || (query in extensionName.toLowerCase()));
+            return math;
         else if (this.showFilter == SHOW_ACTIVE)
-            return ((enabled > 0) && (query == "" || (query in extensionName.toLowerCase())));
+            return (math && (enabled > 0));
         else if (this.showFilter == SHOW_INACTIVE)
-            return ((enabled <= 0) && ((query == "") || (query in extensionName.toLowerCase())));
+            return (math && (enabled <= 0));
         return false;
     },
 
-    on_entry_refilter: function(widget, data) { //data=null
+    on_entry_refilter: function(widget, data) {
         this.modelfilter.refilter();
     },
 
     gm_changed_sorting: function(widget) {
-        let tree_iter = widget.get_active_iter();
-        if (tree_iter != null) {
-            model = widget.get_model();
-            value = model[tree_iter][0];
-
+        let [ok, tree_iter] = widget.get_active_iter();
+        if (ok) {
+            let model = widget.get_model();
+            let value = model.get_value(tree_iter, 0);
             if (value == this.SORT_NAME)
                 this.gm_model.set_sort_column_id(5, Gtk.SortType.ASCENDING);
             else if (value == this.SORT_RATING)
@@ -1113,31 +1116,26 @@ const ExtensionSidePage = new GObject.Class({
         }
     },
 
-    gm_match_func: function(model, iterr, data) { //data=null
+    gm_match_func: function(model, iter, data) {
         let query = this.gm_search_entry.get_buffer().get_text();
-        let value = model.get_value(iterr, 5);
-
-        if (query == "")
-            return true;
-        else if (query.toLowerCase() in value.toLowerCase())
-            return true;
-        return false;
+        let value = model.get_value(iter, 5);
+        return ((query.length == 0) || (value.toLowerCase().indexOf(query.toLowerCase()) != -1))
     },
 
-    gm_on_entry_refilter: function(widget, data) {//data=null
+    gm_on_entry_refilter: function(widget, data) {
         this.gm_modelfilter.refilter();
     },
 
-    load_spices: function(force) { //force=false
+    load_spices: function(force) {
+        force = (force === true);
         this.update_list = {};
-
-        this.spices.load(this.on_spice_load, force);
-        //thread.start_new_thread(this.spices.load, (this.on_spice_load, force));
+        this.spices.load(Lang.bind(this, this.on_spice_load), force);
     },
 
     install_extensions: function() {
-        if (this.install_list.length > 0)
-            thread.start_new_thread(this.spices.install_all, (this.install_list, this.install_finished));
+        if (this.install_list.length > 0) {
+            //thread.start_new_thread(this.spices.install_all, (this.install_list, this.install_finished));
+        }
     },
 
     install_finished: function(need_restart) {
@@ -1154,8 +1152,8 @@ const ExtensionSidePage = new GObject.Class({
     },
 
     on_spice_load: function(spicesData) {
-        //global.log("total spices loaded: %d".format(spicesData.length));
-        let extensionData, extensionName, iter, icon_filename,
+        global.log("total spices loaded: %d".format(Object.keys(spicesData).length));
+        let extensionData, extensionName, iter, iconFilename,
             w, h, cacheIcon, theme, img, surface, wrapper;
 
         this.gm_model.clear();
@@ -1163,21 +1161,16 @@ const ExtensionSidePage = new GObject.Class({
         for (let uuid in spicesData) {
             extensionData = spicesData[uuid];
             extensionName = extensionData['name'].replace('&', '&amp;');
-            iter = this.gm_model.insert_before(null, null);
-            this.gm_model.set_value(iter, 0, uuid);
-            this.gm_model.set_value(iter, 1, "<b>%s</b>".format(extensionName));
-            this.gm_model.set_value(iter, 2, 0);
-
             if (!this.themes) {
-                icon_filename = Gio.file_new_for_path(extensionData['icon']).get_basename();
+                iconFilename = Gio.file_new_for_path(extensionData['icon']).get_basename();
                 w = ROW_SIZE + 5;
                 h = ROW_SIZE + 5;
             } else {
-                icon_filename = Gio.file_new_for_path(extensionData['screenshot']).get_basename();
+                iconFilename = Gio.file_new_for_path(extensionData['screenshot']).get_basename();
                 w = -1;
                 h = 60;
             }
-            cacheIcon = Gio.file_new_for_path(GLib.build_filenamev([this.spices.get_cache_folder(), icon_filename]));
+            cacheIcon = this.spices.getCacheFolder().get_child(this.collection_type).get_child(iconFilename);
             if (!cacheIcon.query_exists(null)) {
                 theme = Gtk.IconTheme.get_default();
                 if (theme.has_icon("cs-%ss".format(this.collection_type)))
@@ -1191,6 +1184,10 @@ const ExtensionSidePage = new GObject.Class({
                         img = theme.load_icon("cs-%ss".format(this.collection_type), h, 0);
                 }
             }
+            iter = this.gm_model.insert_before(null, null);
+            this.gm_model.set_value(iter, 0, uuid);
+            this.gm_model.set_value(iter, 1, "<b>%s</b>".format(extensionName));
+            this.gm_model.set_value(iter, 2, 0);
             this.gm_model.set_value(iter, 3, img);
             this.gm_model.set_value(iter, 4, parseInt(extensionData['score']));
             this.gm_model.set_value(iter, 5, extensionData['name']);
@@ -1238,7 +1235,7 @@ const ExtensionSidePage = new GObject.Class({
                     Please contact the developer.\"");
 
             dialog = new Gtk.MessageDialog({
-                transient_for: null,
+                transient_for: this.topWindow,
                 modal: true,
                 message_type: Gtk.MessageType.ERROR
             });
@@ -1300,16 +1297,16 @@ const ExtensionSidePage = new GObject.Class({
             return;
         this.disable_extension(uuid, name, 0);
 
-        thread.start_new_thread(this.spices.uninstall, (uuid, name, schema_filename, this.on_uninstall_finished));
+        //thread.start_new_thread(this.spices.uninstall, (uuid, name, schema_filename, this.on_uninstall_finished));
     },
 
     on_uninstall_finished: function(uuid) {
         this.load_extensions();
     },
 
-    on_page_changed: function(args) {
-        let name = this.stack.get_visible_child_name();
-        if ((name == "more") && (this.gm_model.length == 0))
+    on_page_changed: function(stack) {
+        let name = stack.get_visible_child_name();
+        if ((name == "more") && (this.gm_model.iter_n_children(null) == 0))
             this.load_spices();
         this.focus(name);
     },
@@ -1324,7 +1321,7 @@ const ExtensionSidePage = new GObject.Class({
 
     _enabled_extensions_changed: function() {
         let last_selection = '';
-        model, treeiter = this.treeview.get_selection().get_selected();
+        let [ok, model, treeiter] = this.treeview.get_selection().get_selected();
         this.refresh_running_uuids();
 
         if (this.themes)
@@ -1332,10 +1329,10 @@ const ExtensionSidePage = new GObject.Class({
         else
             this.enabled_extensions = this.settings.get_strv("enabled-%ss".format(this.collection_type));
 
-        uuidCount = {};
-        for (enabled_extension in this.enabled_extensions) {
+        let uuidCount = {};
+        for (let enabled_extension in this.enabled_extensions) {
             try {
-                uuid = this.fromSettingString(enabled_extension).lstrip("!");
+                let uuid = this.fromSettingString(enabled_extension).lstrip("!");
                 if (uuid == "")
                     uuid = "STOCK";
                 if (uuid in uuidCount)
@@ -1346,26 +1343,28 @@ const ExtensionSidePage = new GObject.Class({
                 continue;
             }
         }
-        for (row in this.model) {
-            if (!this.themes) {
-                uuid = this.model.get_value(row.iter, 0);
-            } else {
-                if (this.model.get_value(row.iter, 0) == "STOCK")
-                    uuid = "STOCK";
-                else
-                    uuid = this.model.get_value(row.iter, 5);
-            }
-            if (uuid in uuidCount) {
-                if (this.running_uuids != null) {
-                    if (uuid in this.running_uuids)
-                        this.model.set_value(row.iter, 2, uuidCount[uuid]);
-                    else
-                        this.model.set_value(row.iter, 2, -1);
+        if(ok) {
+            for (let row in this.model) {
+                if (!this.themes) {
+                    uuid = this.model.get_value(row.iter, 0);
                 } else {
-                    this.model.set_value(row.iter, 2, uuidCount[uuid]);
+                    if (this.model.get_value(row.iter, 0) == "STOCK")
+                        uuid = "STOCK";
+                    else
+                        uuid = this.model.get_value(row.iter, 5);
                 }
-            } else {
-                this.model.set_value(row.iter, 2, 0);
+                if (uuid in uuidCount) {
+                    if (this.running_uuids != null) {
+                        if (uuid in this.running_uuids)
+                            this.model.set_value(row.iter, 2, uuidCount[uuid]);
+                        else
+                            this.model.set_value(row.iter, 2, -1);
+                    } else {
+                        this.model.set_value(row.iter, 2, uuidCount[uuid]);
+                    }
+                } else {
+                    this.model.set_value(row.iter, 2, 0);
+                }
             }
         }
         this._selection_changed();
@@ -1376,40 +1375,41 @@ const ExtensionSidePage = new GObject.Class({
     },
 
     _add_another_instance: function() {
-        model, treeiter = this.treeview.get_selection().get_selected();
-        if (treeiter)
+        let [ok, model, treeiter] = this.treeview.get_selection().get_selected();
+        if (ok)
             this._add_another_instance_iter(treeiter);
     },
 
     _remove_all_instances: function() {
-        model, treeiter = this.treeview.get_selection().get_selected();
+        let [ok, model, treeiter] = this.treeview.get_selection().get_selected();
 
-        if (treeiter) {
-            uuid = model.get_value(treeiter, 0);
-            checked = model.get_value(treeiter, 2);
-            name = model.get_value(treeiter, 5);
+        if (ok) {
+            let uuid = model.get_value(treeiter, 0);
+            let checked = model.get_value(treeiter, 2);
+            let name = model.get_value(treeiter, 5);
 
             this.disable_extension(uuid, name, checked);
         }
     },
 
     select_updated_extensions: function() {
+        let msg;
         if (this.update_list.length > 1)
             msg = _("This operation will update the selected items.\n\nDo you want to continue?");
         else
             msg = _("This operation will update the selected item.\n\nDo you want to continue?");
         if (!this.show_prompt(msg))
             return;
-        for (row in this.gm_model) {
-            uuid = this.gm_model.get_value(row.iter, 0);
-            if (uuid in this.update_list.keys())
+        for (let row in this.gm_model) {
+            let uuid = this.gm_model.get_value(row.iter, 0);
+            if (uuid in this.update_list)
                 this.gm_mark(uuid, true);
         }
         this.install_extensions();
     },
 
     refresh_update_button: function() {
-        num = this.update_list.length;
+        let num = this.update_list.length;
         if (num == this.current_num_updates)
             return;
         this.current_num_updates = num;
@@ -1450,14 +1450,14 @@ const ExtensionSidePage = new GObject.Class({
     },
 
     should_show_config_button: function(model, iter) {
-        hide_override = model.get_value(iter, 7);
-        setting_type = model.get_value(iter, 13);
+        let hide_override = model.get_value(iter, 7);
+        let setting_type = model.get_value(iter, 13);
         return ((setting_type == SETTING_TYPE_INTERNAL) && (!hide_override));
     },
 
     should_show_ext_config_button: function(model, iter) {
-        hide_override = model.get_value(iter, 7);
-        setting_type = model.get_value(iter, 13);
+        let hide_override = model.get_value(iter, 7);
+        let setting_type = model.get_value(iter, 13);
         return ((setting_type == SETTING_TYPE_EXTERNAL) && (!hide_override));
     },
 
@@ -1536,8 +1536,8 @@ const ExtensionSidePage = new GObject.Class({
     load_extensions: function() {
         this.model.clear();
         if (!this.themes) {
-            this.load_extensions_in("%s/.local/share/cinnamon/%ss".format(home, this.collection_type));
-            this.load_extensions_in("/usr/share/cinnamon/%ss".format(this.collection_type));
+            this.load_extensions_in(GLib.build_filenamev([global.userclassicdatadir, this.collection_type + "s"]));
+            this.load_extensions_in(GLib.build_filenamev([global.rootdatadir, this.collection_type + "s"]));
         } else {
             this.load_extensions_in("%s/.themes".format(home));
             this.load_extensions_in("/usr/share", true);
@@ -1550,10 +1550,10 @@ const ExtensionSidePage = new GObject.Class({
             extension_max_instances, extension_role, extension_name,
             extension_uuid, extension_description, extension_icon, ext_config_app,
             hide_config_button, setting_type, last_edited, schema_filename,
-            dangerous, icon, metadataDir, json_data, data, ok, version_supported,
+            dangerous, iconWriteable, iconFound, metadataDir, json_data, data, ok, version_supported,
             iter, found, img, size, text, wrapper, surface,
             themeGtk, themes, themeDir, theme_last_edited, theme_uuid, theme_name,
-            theme_description, icon_path, extension_key;
+            theme_description, iconPath, extension_key;
 
         let dir = Gio.file_new_for_path(directory);
         if (!(dir.query_exists(null) && (dir.query_file_type(Gio.FileQueryInfoFlags.NONE, null) == Gio.FileType.DIRECTORY)))
@@ -1644,15 +1644,8 @@ const ExtensionSidePage = new GObject.Class({
                     extension_key = (extension_name + extension_description).toUpperCase();
                     if (extension_key.indexOf(this.search_entry.get_text().toUpperCase()) == -1)
                         continue;
-
-                    iter = this.model.insert_before(null, null);
                     found = (this.enabled_extensions.indexOf(extension_uuid) != -1);
-                    this.model.set_value(iter, 0, extension_uuid);
                     text = "<b>%s</b>\n<i><span size='small'>%s</span></i>".format(extension_name, extension_description);
-                    this.model.set_value(iter, 1, text);
-                    this.model.set_value(iter, 2, found);
-                    this.model.set_value(iter, 3, extension_max_instances);
-
                     img = null;
                     size = ROW_SIZE;
                     if ("icon" in data) {
@@ -1672,23 +1665,27 @@ const ExtensionSidePage = new GObject.Class({
                         if (themeGtk.has_icon("cs-%ss".format(this.collection_type)))
                             img = themeGtk.load_icon("cs-%ss".format(this.collection_type), size, 0);
                     }
+                    if (writeable)
+                        iconWriteable = "";
+                    else
+                        iconWriteable = "cs-xlet-system";
+                    if (found)
+                        iconFound = "cs-xlet-running";
+                    else
+                        iconFound = "";
+                    iter = this.model.insert_before(null, null);
+                    this.model.set_value(iter, 0, extension_uuid);
+                    this.model.set_value(iter, 1, text);
+                    this.model.set_value(iter, 2, found);
+                    this.model.set_value(iter, 3, extension_max_instances);
                     this.model.set_value(iter, 4, img);
                     this.model.set_value(iter, 5, extension_name);
                     this.model.set_value(iter, 6, writeable);
                     this.model.set_value(iter, 7, hide_config_button);
                     this.model.set_value(iter, 8, ext_config_app);
                     this.model.set_value(iter, 9, parseFloat(last_edited));
-                    if (writeable)
-                        icon = "";
-                    else
-                        icon = "cs-xlet-system";
-
-                    this.model.set_value(iter, 10, icon);
-                    if (found)
-                        icon = "cs-xlet-running";
-                    else
-                        icon = "";
-                    this.model.set_value(iter, 11, icon);
+                    this.model.set_value(iter, 10, iconWriteable);
+                    this.model.set_value(iter, 11, iconFound);
                     this.model.set_value(iter, 12, schema_filename);
                     this.model.set_value(iter, 13, setting_type);
                     this.model.set_value(iter, 14, version_supported);
@@ -1734,7 +1731,6 @@ const ExtensionSidePage = new GObject.Class({
                         theme_name = theme;
                     }
                     theme_description = "";
-                    iter = this.model.insert_before(null, null);
                     found = 0;
                     for (let enabled_theme in this.enabled_extensions) {
                         if (enabled_theme == theme_name)
@@ -1743,12 +1739,20 @@ const ExtensionSidePage = new GObject.Class({
                             found = 1;
                     }
                     if (metadataDir.get_child("thumbnail.png").query_exists(null))
-                        icon_path = metadataDir.get_child("thumbnail.png").get_path();
+                        iconPath = metadataDir.get_child("thumbnail.png").get_path();
                     else
-                        icon_path = "/usr/share/cinnamon/theme/thumbnail-generic.png";
+                        iconPath = "/usr/share/cinnamon/theme/thumbnail-generic.png";
                     size = 60;
-                    img = GdkPixbuf.Pixbuf.new_from_file_at_size(icon_path, -1, size);
-
+                    img = GdkPixbuf.Pixbuf.new_from_file_at_size(iconPath, -1, size);
+                    if (writeable)
+                        iconWriteable = "";
+                    else
+                        iconWriteable = "cs-xlet-system";
+                    if (found)
+                        iconFound = "cs-xlet-installed";
+                    else
+                        iconFound = "";
+                    iter = this.model.insert_before(null, null);
                     this.model.set_value(iter, 0, theme_uuid);
                     this.model.set_value(iter, 1, "<b>%s</b>".format(theme_name));
                     this.model.set_value(iter, 2, found);
@@ -1759,18 +1763,8 @@ const ExtensionSidePage = new GObject.Class({
                     this.model.set_value(iter, 7, true);
                     this.model.set_value(iter, 8, "");
                     this.model.set_value(iter, 9, long(theme_last_edited));
-
-                    if (writeable)
-                        icon = "";
-                    else
-                        icon = "cs-xlet-system";
-
-                    this.model.set_value(iter, 10, icon);
-                    if (found)
-                        icon = "cs-xlet-installed";
-                    else
-                        icon = "";
-                    this.model.set_value(iter, 11, icon);
+                    this.model.set_value(iter, 10, iconWriteable);
+                    this.model.set_value(iter, 11, iconFound);
                     this.model.set_value(iter, 13, SETTING_TYPE_NONE);
                     this.model.set_value(iter, 14, true);
                 } catch(ge) {
@@ -1782,7 +1776,7 @@ const ExtensionSidePage = new GObject.Class({
 
     show_prompt: function(msg) {
         dialog = new Gtk.MessageDialog({
-            transient_for: null,
+            transient_for: this.topWindow,
             destroy_with_parent: true,
             message_type: Gtk.MessageType.QUESTION,
             buttons: Gtk.ButtonsType.YES_NO
@@ -1798,7 +1792,7 @@ const ExtensionSidePage = new GObject.Class({
 
     show_info: function(msg) {
         dialog = new Gtk.MessageDialog({
-            transient_for: null,
+            transient_for: this.topWindow,
             modal: true,
             message_type: Gtk.MessageType.INFO,
             buttons: Gtk.ButtonsType.OK
@@ -1816,12 +1810,12 @@ const ExtensionSidePage = new GObject.Class({
 // to open the correct locations
 
     do_logs_exist: function() {
-        return (Gio.file_new_for_path(home).get_child(".cinnamon").get_child("glass.log").query_exists(null) ||
+        return (Gio.file_new_for_path(home).get_child(Config.USER_DOMAIN_FOLDER).get_child("glass.log").query_exists(null) ||
                 Gio.file_new_for_path(home).get_child(".xsession-errors").query_exists(null));
     },
 
     show_logs: function() {
-        let glassLog = Gio.file_new_for_path(home).get_child(".cinnamon").get_child("glass.log");
+        let glassLog = Gio.file_new_for_path(home).get_child(Config.USER_DOMAIN_FOLDER).get_child("glass.log");
         let xerrorLog = Gio.file_new_for_path(home).get_child(".xsession-errors");
         if (glassLog.query_exists(null)) {
             try {
@@ -1903,16 +1897,17 @@ const ExtensionSidePage = new GObject.Class({
         }
     },
 });
-
+/*
 const BGWorkQueue = new GObject.Class({
-    Name: 'ClassicGnome.BGWorkQueue',
-    GTypeName: 'ClassicGnomeBGWorkQueue',
+    Name: 'Gnocine.BGWorkQueue',
+    GTypeName: 'GnocineBGWorkQueue',
     Signals: {
         'finished': {
             flags: GObject.SignalFlags.RUN_LAST,
             param_types: []
         },
     },
+
     _init: function() {
         this.jobs = [];
         this.thread_ids = [];
@@ -1987,4 +1982,4 @@ const BGWorkQueue = new GObject.Class({
         }
         this.idle_id = GObject.idle_add(this._idle_complete_cb);
     },
-});
+});*/

@@ -1,6 +1,6 @@
 /* -*- mode: js; js-basic-offset: 4; indent-tabs-mode: nil -*- */
 /* ========================================================================================================
- * cg_settings.js - Module for display the Classic Gnome xlet settings -
+ * cg_settings.js - Module for display the Gnocine xlet settings -
  * ========================================================================================================
  */
 //imageNew = new Gtk.Image ({ icon_name: 'go-previous-symbolic', icon_size: Gtk.IconSize.BUTTON });
@@ -42,10 +42,12 @@ const Module = new GObject.Class({
     },
 
     on_module_selected: function() {
-        if (this.sidePage && !this.loaded) {
-            global.log("Loading Settings module");
-            this.sidePage.load();
-            this.loaded = true;
+        if(this.sidePage) {
+            if (!this.sidePage.isLoaded) {
+                global.log("Loading Settings module");
+                this.sidePage.load();
+            }
+            this.sidePage.build();
         }
     },
 });

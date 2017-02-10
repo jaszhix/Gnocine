@@ -8,13 +8,13 @@ const MainCinnamon = ExtensionUtils.imports.ui.main;
 
 function init() {
     MainCinnamon.init();
-    return true;
+    //return true;
 }
 
 function enable() {
-    return true;
+    //return true;
 }
 
 function disable() {
-    return true;
+    //return true;
 }

@@ -38,21 +38,21 @@
   *  Status: Untested
 
 * slideshow
-*  Status: Loads, not working
+  *  Status: Loads, not working
 
 * window-list
-*  Status: Working
+  *  Status: Working
 
 * expo
   *  Status: Working
   *  Notes:
-    *  Cinnamon expo not working. Version included with Classic Gnome was modified to trigger the Gnome Activities view.
+    *  Cinnamon expo not working. Version included with Gnocine was modified to trigger the Gnome Activities view.
 
 * nvidia-prime
   *  Status: Untested
 
 * scale
-  *  Status: Untested
+  *  Status: Working
 
 * sound
   *  Status: Working
@@ -99,7 +99,7 @@
     *  Icons only appear after a new process is launched. Does not load icons for existing processes.
 
 * xrandr
-*  Status: Untested
+*  Status: Crashes GNOME Shell
 
 * menu
   *  Status: Partially working

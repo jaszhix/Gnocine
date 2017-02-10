@@ -10,25 +10,28 @@ const GLib = imports.gi.GLib;
 const GObject = imports.gi.GObject;
 const Gtk = imports.gi.Gtk;
 
+const DownloadManager = cimports.ui.downloadManager;
+const Config = cimports.misc.config;
+const Repos = cimports.misc.repos;
+
 //const Gettext = imports.gettext.domain(ExtensionUtils.metadata['gettext-domain']);
 const _ = Gettext.gettext;
-
-const home = GLib.get_home_dir();
-const locale_inst = GLib.build_filenamev([home, ".local", "share", "locale"]);
-const settings_dir = GLib.build_filenamev([home, ".cinnamon", "configs"]);
-
-const URL_SPICES_HOME = "http://cinnamon-spices.linuxmint.com";
-const URL_SPICES_APPLET_LIST = URL_SPICES_HOME + "/json/applets.json";
-const URL_SPICES_THEME_LIST = URL_SPICES_HOME + "/json/themes.json";
-const URL_SPICES_DESKLET_LIST = URL_SPICES_HOME + "/json/desklets.json";
-const URL_SPICES_EXTENSION_LIST = URL_SPICES_HOME + "/json/extensions.json";
 
 const ABORT_NONE = 0;
 const ABORT_ERROR = 1;
 const ABORT_USER = 2;
 
-function ui_thread_do(callback, args) {
-    //GLib.idle_add (callback, args, GLib.PRIORITY_DEFAULT);
+function isDir(dir) {
+    return (dir.query_filesystem_info("standard::type", null).get_file_type() == Gio.FileType.DIRECTORY);
+}
+
+function createDir(dir) {
+    // FIXME: use glib will be better.
+    //Glib.mkdir_with_parents(dir, chmod);
+    if(!isDir(dir))
+        createDir(dir.get_parent());
+    if(!isDir(dir))
+        dir.make_directory(null);
 }
 
 function removeEmptyFolders(path) {
@@ -64,142 +67,176 @@ function removeEmptyFolders(path) {
 function recursivelyDeleteDir(dir) {
     let children = dir.enumerate_children('standard::name,standard::type',
                                           Gio.FileQueryInfoFlags.NONE, null);
-
     let info, child;
     while ((info = children.next_file(null)) != null) {
         let type = info.get_file_type();
         let child = dir.get_child(info.get_name());
         if (type == Gio.FileType.REGULAR)
-            deleteGFile(child);
+            child['delete'](null);
         else if (type == Gio.FileType.DIRECTORY)
             recursivelyDeleteDir(child);
     }
-
-    deleteGFile(dir);
+    dir['delete'](null);
 }
 
-const MAX_THREADS = 10;
-
-const ThreadedDownloader = new GObject.Class({
-    Name: 'ClassicGnome.ThreadedDownloader',
-    GTypeName: 'ClassicGnomeThreadedDownloader',
-
-    _init: function() {
-        this.jobs = [];
-        this.thread_ids = [];
-    },
-
-    get_n_jobs: function() {
-        return this.jobs.length;
-    },
-
-    busy: function() {
-        return ((this.jobs.length > 0) || (this.thread_ids.length > 0));
-    },
-
-    push: function(job) {
-        this.jobs.insert(0, job);
-        this.check_start_job();
-    },
-
-    check_start_job: function() {
-        if (this.jobs.length > 0) {
-            if (this.thread_ids.length == MAX_THREADS)
-                return;
-
-            func, payload = this.jobs.pop();
-            handle = thread.start_new_thread(func, payload);
-            this.thread_ids.push(handle);
-
-            this.check_start_job();
+function recursivelyCopyDir(fromDir, toDir) {
+    let children = fromDir.enumerate_children('standard::name,standard::type',
+                                              Gio.FileQueryInfoFlags.NONE, null);
+    let info, child;
+    while ((info = children.next_file(null)) != null) {
+        let type = info.get_file_type();
+        let child = dir.get_child(info.get_name());
+        if (type == Gio.FileType.REGULAR) {
+            child.copy(toDir.get_child(child.get_basename()), 0, null, function(){});
+        } else if (type == Gio.FileType.DIRECTORY) {
+            createDir(child);
+            recursivelyCopyDir(child);
         }
-    },
+    }
+}
 
-    prune_thread: function(tid) {
-        try {
-            this.thread_ids.remove(tid);
-        } catch(e) {}
-        this.check_start_job();
-    },
-});
+function commondPrefix(parts) {
+    return os.path.commonprefix(parts);
+}
+
+function changeModeGFile(file, octal) {
+    if(file.query_exists(null)) {
+        let info = file.query_info("unix::mode", Gio.FileQueryInfoFlags.NONE, null);
+        info.set_attribute_uint32("unix::mode", parseInt(octal, 8));
+        file.set_attributes_from_info(info, Gio.FileQueryInfoFlags.NONE, null);
+    }
+}
 
 const SpiceHarvester = new GObject.Class({
-    Name: 'ClassicGnome.SpiceHarvester',
-    GTypeName: 'ClassicGnomeSpiceHarvester',
+    Name: 'Gnocine.SpiceHarvester',
+    GTypeName: 'GnocineSpiceHarvester',
 
-    _init: function(collection_type, window) {
-        this.collection_type = collection_type;
-        this.cache_folder = Gio.file_new_for_path(this.get_cache_folder());
-        this.install_folder = this.get_install_folder();
-        this.index_cache = {};
-        //this.download_manager = new ThreadedDownloader();
+    _init: function(collectionType, window) {
+        this.loadConfiguration();
+
+        this.collectionType = collectionType;
+        this.indexCache = {};
+        this.downloadManager = new DownloadManager.DownloaderManager(10);
+        this.downloadManager.connect("download-hook", Lang.bind(this, this._onDownloadHook));
+        this.downloadManager.connect("download-done", Lang.bind(this, this._onDownloadDone));
+        //this.downloadManager.connect("download-error", Lang.bind(this, this._onDownloadError));
         this.error = null;
-        this.themes = (collection_type == "theme");
-        if (!(this.cache_folder.get_child("index.json").query_exists(null)))
-            this.has_cache = false;
+        if (!(this.cacheFolder.get_child(this.collectionType).get_child("index.json").query_exists(null)))
+            this.hasCache = false;
         else
-            this.has_cache = true;
+            this.hasCache = true;
 
         this.window = window;
         this.builder = new Gtk.Builder();
-        
         this.builder.add_from_file(GLib.build_filenamev([
-            global.userdatadir, "settings", "cinnamon-settings-spice-progress.ui"
+            global.rootdatadir, "settings", "cinnamon-settings-spice-progress.ui"
         ]));
-        this.progress_window = this.builder.get_object("progress_window");
-        //this.progress_window.set_transient_for(window);
-        this.progress_window.set_destroy_with_parent(true);
-        this.progress_window.set_modal(true);
-        this.progress_window.set_position(Gtk.WindowPosition.CENTER_ON_PARENT);
-        this.progress_button_abort = this.builder.get_object("btnProgressAbort");
-        this.progress_window.connect("delete-event", Lang.bind(this, this.on_progress_close));
+        this.progressWindow = this.builder.get_object("progress_window");
+        this.progressWindow.set_transient_for(window);
+        this.progressWindow.set_destroy_with_parent(true);
+        this.progressWindow.set_modal(true);
+        this.progressWindow.set_position(Gtk.WindowPosition.CENTER_ON_PARENT);
+        this.progressButtonAbort = this.builder.get_object("btnProgressAbort");
+        this.progressWindow.connect("delete-event", Lang.bind(this, this._onProgressClose));
         this.progresslabel = this.builder.get_object('progresslabel');
         this.progressbar = this.builder.get_object("progressbar");
         this.progressbar.set_text('');
         this.progressbar.set_fraction(0);
 
-        this.progress_window.set_title("");
+        this.progressWindow.set_title("");
 
-        this.abort_download = ABORT_NONE;
-        this.download_total_files = 0;
-        this.download_current_file = 0;
+        this.abortDownload = ABORT_NONE;
+        this.downloadTotalFiles = 0;
+        this.downloadCurrentFiles = 0;
         this._sigLoadFinished = null;
 
-        this.progress_button_abort.connect("clicked", Lang.bind(this, this.on_abort_clicked));
+        this.progressButtonAbort.connect("clicked", Lang.bind(this, this._onAbortClicked));
 
         this.spiceDetail = new Gtk.Dialog({
            title: _("Applet info"),
-           //transient_for: this.window,
+           transient_for: this.window,
            modal: true,
            destroy_with_parent: true
         });
         this.spiceDetailSelectButton = this.spiceDetail.add_button(_("Select and Close"), Gtk.ResponseType.YES);
-        this.spiceDetailSelectButton.connect("clicked", Lang.bind(this, this.close_select_detail));
+        this.spiceDetailSelectButton.connect("clicked", Lang.bind(this, this.closeSelectDetail));
         this.spiceDetailCloseButton = this.spiceDetail.add_button(_("Close"), Gtk.ResponseType.CANCEL);
-        this.spiceDetailCloseButton.connect("clicked", Lang.bind(this, this.close_detail));
-        this.spiceDetail.connect("destroy", Lang.bind(this, this.on_close_detail));
-        this.spiceDetail.connect("delete_event", Lang.bind(this, this.on_close_detail));
+        this.spiceDetailCloseButton.connect("clicked", Lang.bind(this, this.closeDetail));
+        this.spiceDetail.connect("destroy", Lang.bind(this, this._onCloseDetail));
+        this.spiceDetail.connect("delete_event", Lang.bind(this, this._onCloseDetail));
         this.spiceDetail.set_default_size(640, 440);
         this.spiceDetail.set_size_request(640, 440);
         //FIXME: This help?
-        //content_area = this.spiceDetail.get_content_area();
-    },
-       
-    close_select_detail: function() {
-        this.spiceDetail.hide();
-        if (callable(this.on_detail_select))
-            this.on_detail_select(this);
+        //contentArea = this.spiceDetail.get_content_area();
     },
 
-    on_close_detail: function(args) {
-        this.close_detail();
+    _onDownloadHook: function(manager, job, downloadSize, downloadLength) {
+        if (manager.getNumberOfJobs() == 1) {
+            let fraction = parseFloat(downloadSize)/parseFloat(downloadLength);
+            this.progressbar.set_text("%s - %d / %d files".format(Math.floor(fraction*100).toString() + '%', downloadSize, downloadLength));
+            if (fraction > 0)
+                this.progressbar.set_fraction(fraction);
+            else
+                this.progressBarPulse();
+            while (Gtk.events_pending()) {
+                Gtk.main_iteration();
+            }
+        }
+
+    },
+
+    _onDownloadDone: function(manager, job, downloadSize, downloadLength) {
+        if (downloadSize > 1) {
+            let fraction = parseFloat(downloadSize)/parseFloat(downloadLength);
+            this.progressbar.set_text("%s - %d / %d files".format(Math.floor(fraction*100).toString() + '%', downloadSize, downloadLength));
+            if (fraction > 0)
+                this.progressbar.set_fraction(fraction);
+            else
+                this.progressBarPulse();
+            while (Gtk.events_pending()) {
+                Gtk.main_iteration();
+            }
+        }
+    },
+
+    _onDownloadError: function(manager, job, errorStatusCode) {
+        global.log("Download Error: Soup.Status.Code " +  errorStatusCode);
+    },
+
+    loadConfiguration: function() {
+        this.homeFolder = Gio.file_new_for_path(GLib.get_home_dir());
+        this.userDirFolder = Gio.file_new_for_path(GLib.get_user_data_dir());
+        this.domainFolder = this.homeFolder.get_child(Config.USER_DOMAIN_FOLDER);//Don't used global
+        this.configFolder = this.domainFolder.get_child(Config.USER_CONFIG_FOLDER);
+        this.cacheFolder = this.domainFolder.get_child(Config.USER_CACHE_FOLDER);
+        this.repoFolder = this.domainFolder.get_child(Config.USER_REPOSITORIES_FOLDER);
+        this.localeFolder = this.userDirFolder.get_child(Config.USER_LOCALE_FOLDER);
+        this.installFolder = this.userDirFolder.get_child(Config.USER_INSTALL_FOLDER);
+        this.loadRepositories();
+    },
+
+    loadRepositories: function() {
+        this.repositories = Repos.DEFAULT_REPOSITORIES;
+        if(this.repoFolder.query_exists(null)) {
+            //load others
+        }
+    },
+
+    closeSelectDetail: function() {
+        this.spiceDetail.hide();
+        if (callable(this._onDetailSelect))
+            this._onDetailSelect(this);
+    },
+
+    _onCloseDetail: function(args) {
+        this.closeDetail();
         return true;
     },
 
-    close_detail: function() {
+    closeDetail: function() {
         this.spiceDetail.hide();
-        if (this.hasOwnProperty('on_detail_close') && callable(this.on_detail_close))
-            this.on_detail_close(this);
+        if (this.hasOwnProperty('_onDetailClose') && callable(this._onDetailClose))
+            this._onDetailClose(this);
     },
 
     _systemCall: function(cmd) {
@@ -213,58 +250,61 @@ const SpiceHarvester = new GObject.Class({
         } catch (e) {}
     },
 
-    show_detail: function(uuid, onSelect, onClose) { // onSelect=null, onClose=null
-        this.on_detail_select = onSelect;
-        this.on_detail_close = onClose;
+    showDetail: function(uuid, onSelect, onClose) { // onSelect=null, onClose=null
+        this._onDetailSelect = onSelect;
+        this._onDetailClose = onClose;
 
-        if (!this.has_cache)
-            this.refresh_cache(false);
-        else if (this.index_cache.length == 0)
-            this.load_cache();
+        if (!this.hasCache)
+            this.refreshCache(false);
+        else if (this.indexCache.length == 0)
+            this.loadCache();
 
-        if (!(uuid in this.index_cache)) {
+        if (!(uuid in this.indexCache)) {
             this.load(Lang.bind(this, function(obj, uuid) {
-                this.show_detail(uuid);
+                this.showDetail(uuid);
             }, uuid));
             return;
         }
 
-        let appletData = this.index_cache[uuid];
+        let appletData = this.indexCache[uuid];
 
         // Browsing the info within the app would be great (ala mintinstall)
         // and it gives a better experience (layout, comments, reviewing) than
         // browsing online
-
-        this._systemCall("xdg-open '%s/%ss/view/%s'".format(URL_SPICES_HOME, this.collection_type, appletData['spices-id']));
+        let server = this.repositories["default"].server_url;
+        this._systemCall("xdg-open '%s/%ss/view/%s'".format(server, this.collectionType, appletData['spices-id']));
         return;
 
-        // screenshot_filename = Gio.file_new_for_path(appletData['screenshot']).get_basename();
-        // screenshot_path = GLib.build_filenamev([this.get_cache_folder(), screenshot_filename]);
-        // appletData['screenshot_path'] = screenshot_path;
-        // appletData['screenshot_filename'] = screenshot_filename;
+        // screenshotFilename = Gio.file_new_for_path(appletData['screenshot']).get_basename();
+        // screenshotPath = GLib.build_filenamev([this.cacheFolder.get_child(this.collectionType).get_path(), screenshotFilename]);
+        // appletData['screenshot_path'] = screenshotPath;
+        // appletData['screenshot_filename'] = screenshotFilename;
 
-        // if (!Gio.file_new_for_path(screenshot_path).query_exists(null)) {
-        //     f = open(screenshot_path, 'w');
-        //     this.download_url = URL_SPICES_HOME + appletData['screenshot'];
-        //     this.download_with_progressbar(f, screenshot_path, _("Downloading screenshot"), false);
+        // if (!Gio.file_new_for_path(screenshotPath).query_exists(null)) {
+        //     f = open(screenshotPath, 'w');
+        //     this.downloadURL = server + appletData['screenshot'];
+        //     this.downloadWithProgressbar(f, screenshotPath, _("Downloading screenshot"), false);
         // }
-        // template = open(os.path.realpath(os.path.dirname(os.path.abspath(__file__)) + "/../data/spices/applet-detail.html")).read();
+        // let htmlDetails = GLib.build_filenamev([
+        //     global.rootdatadir, "settings", "spices" "applet-detail.html"
+        // ])
+        // template = GLib.file_get_contents(htmlDetails);
         // subs = {};
-        // subs['appletData'] = json.dumps(appletData, sort_keys=false, indent=3);
+        // subs['appletData'] = JSON.stringify(appletData, null, 4);
         // html = string.Template(template).safe_substitute(subs);
 
         // // Prevent flashing previously viewed
-        // this._sigLoadFinished = this.browser.connect("document-load-finished", Lang.bind(this, this.real_show_detail));
+        // this._sigLoadFinished = this.browser.connect("document-load-finished", Lang.bind(this, this.realShowDetail));
         // this.browser.load_html_string(html, "file:///");
     },
 
-    real_show_detail: function() {
+    realShowDetail: function() {
         this.browser.show();
         this.spiceDetail.show();
         this.browser.disconnect(this._sigLoadFinished);
     },
 
-    browser_title_changed: function(view, frame, title) {
+    browserTitleChanged: function(view, frame, title) {
         let uuid;
         if (title.startswith("nop"))
             return;
@@ -277,90 +317,78 @@ const SpiceHarvester = new GObject.Class({
         return;
     },
 
-    browser_console_message: function(view, msg, line, sourceid) {
+    browserConsoleMessage: function(view, msg, line, sourceid) {
         //global.log(msg);
     },
 
-    get_index_url: function() {
-        if (this.collection_type == 'applet')
-            return URL_SPICES_APPLET_LIST;
-        else if (this.collection_type == 'extension')
-            return URL_SPICES_EXTENSION_LIST;
-        else if (this.collection_type == 'theme')
-            return URL_SPICES_THEME_LIST;
-        else if (this.collection_type == 'desklet')
-            return URL_SPICES_DESKLET_LIST;
-        return false;
+    getIndexURL: function() {
+        let server = this.repositories["default"].server_url;
+        let index = this.repositories["default"].collections[this.collectionType].index;
+        return server + index;
     },
 
-    get_cache_folder: function() {
-        let cache_folder = Gio.file_new_for_path(GLib.build_filenamev([
-          home, ".cinnamon", "spices.cache", this.collection_type
-        ]));
-        if (!cache_folder.query_exists(null))
-            recursivelyDeleteDir(cache_folder);
-        return cache_folder.get_path();
+    getCacheFolder: function() {
+        return this.cacheFolder;
     },
 
-    get_install_folder: function() {
-        let install_folder = null;
-        if (['applet','desklet','extension'].indexOf(this.collection_type) != -1) {
-            install_folder = GLib.build_filenamev([
-                home, ".local", "share", "cinnamon", this.collection_type + "s"
-            ]);
-        } else if (this.collection_type == 'theme') {
-            install_folder = GLib.build_filenamev([home, ".themes"]);
+    getInstallFolder: function() {
+        if (this.collectionType == 'theme') {
+            return this.homeFolder.get_child(".themes");
         }
-        return install_folder;
+        return this.installFolder;
     },
 
     load: function(onDone, force) {
-        this.abort_download = ABORT_NONE;
-        global.log("load");
-        if (this.has_cache && !force) {
-            this.load_cache();
-            ui_thread_do(onDone, this.index_cache);
+        this.abortDownload = ABORT_NONE;
+        force = (force == true);
+        if (this.hasCache && !force) {
+            this.loadCache();
+            onDone(this.indexCache);
         } else {
-            ui_thread_do(this.ui_refreshing_index);
-            this.refresh_cache_done_callback = onDone;
-            this.refresh_cache();
-        }
-        //thread.exit();
-    },
-
-    ui_refreshing_index: function() {
-        this.progresslabel.set_text(_("Refreshing index..."));
-        this.progress_window.show();
-        this.progressbar.set_fraction(0);
-        this.progress_bar_pulse();
-    },
- 
-    refresh_cache: function(load_assets) { // load_assets=true
-        let download_url = this.get_index_url();
-
-        let filename = this.cache_folder.get_child("index.json").get_path();
-        let f = open(filename, 'w');
-        this.download(f, filename, download_url);
-
-        this.load_cache();
-        // global.log("Loaded index, now we know about %d spices.".format(this.index_cache.length));
-
-        if (load_assets) {
-            ui_thread_do(this.ui_refreshing_cache);
-            this.load_assets();
+            this.progresslabel.set_text(_("Refreshing index..."));
+            this.progressWindow.show();
+            this.progressbar.set_fraction(0);
+            this.progressBarPulse();
+            this.refreshCacheDoneCallback = onDone;
+            this.refreshCache();
         }
     },
 
-    ui_refreshing_cache: function() {
-        this.progresslabel.set_text(_("Refreshing cache..."));
-        this.progress_button_abort.set_sensitive(true);
+    refreshCache: function(loadAssets) { // loadAssets=true
+        if(!this.currentTaskId) {
+            if(loadAssets !== false)
+                loadAssets = true;
+            let downloadURL = this.getIndexURL();
+            let filename = this.cacheFolder.get_child(this.collectionType).get_child("index.json");
+            let job = new DownloadManager.DownloadJob(downloadURL, filename);
+            this.downloadManager.clearAll();
+            this.downloadManager.addJob(job);
+            this.currentTaskId = this.downloadManager.connect("download-finished", Lang.bind(this, this._onIndexDownload, loadAssets));
+            this.downloadManager.startDownloads();
+            //this.download(filename, downloadURL);
+        }
     },
 
-    load_cache: function() {
-        let jsonFile = this.cache_folder.get_child("index.json");
+    _onIndexDownload: function(manager, loadAssets) {
+       if(this.currentTaskId) {
+           manager.disconnect(this.currentTaskId);
+           this.currentTaskId = null;
+           manager.clearAll();
+       }
+       this.loadCache();
+       // global.log("Loaded index, now we know about %d spices.".format(this.indexCache.length));
+        if (loadAssets) {
+            this.progresslabel.set_text(_("Refreshing cache..."));
+            this.progressButtonAbort.set_sensitive(true);
+            this.loadAssets();
+        }
+    },
+
+    loadCache: function() {
+        let jsonFile = this.cacheFolder.get_child(this.collectionType).get_child("index.json");
         try {
             let [ok, json_data] = GLib.file_get_contents(jsonFile.get_path());
-            this.index_cache = JSON.parse(json_data);
+            this.indexCache = JSON.parse(json_data);
         } catch(e) {
             try {
                 jsonFile['delete'](null);
@@ -369,59 +397,68 @@ const SpiceHarvester = new GObject.Class({
         }
     },
 
-    load_assets: function() {
-        let needs_refresh = 0;
-        this.used_thumbs = [];
+    loadAssets: function() {
+        let needsRefresh = 0;
+        this.usedThumbs = [];
 
-        let uuids = this.index_cache.keys();
-        let icon_basename, iconFile, icon_path;
-        for (uuid in uuids) {
-            if (!this.themes) {
-                icon_basename = Gio.file_new_for_path(this.index_cache[uuid]['icon']).get_basename();
-                iconFile = this.cache_folder.get_child(icon_basename);
-                this.used_thumbs.push(icon_basename);
-            } else {
-                icon_basename = this.sanitize_thumb(
-                    Gio.file_new_for_path(this.index_cache[uuid]['screenshot']).get_basename()
+        let iconBasename, iconFile, icon_path;
+        for (let uuid in this.indexCache) {
+            if (this.collectionType == "theme") {
+                iconBasename = this.sanitizeThumb(
+                    Gio.file_new_for_path(this.indexCache[uuid]['screenshot']).get_basename()
                 );
-                iconFile = this.cache_folder.get_child(icon_basename);
-                this.used_thumbs.push(icon_basename);
+                iconFile = this.cacheFolder.get_child(this.collectionType).get_child(iconBasename);
+                this.usedThumbs.push(iconBasename);
+            } else {
+                iconBasename = Gio.file_new_for_path(this.indexCache[uuid]['icon']).get_basename();
+                iconFile = this.cacheFolder.get_child(this.collectionType).get_child(iconBasename);
+                this.usedThumbs.push(iconBasename);
             }
-            this.index_cache[uuid]['icon_filename'] = icon_basename;
-            this.index_cache[uuid]['icon_path'] = iconFile.get_path();
+            this.indexCache[uuid]['icon_filename'] = iconBasename;
+            this.indexCache[uuid]['icon_path'] = iconFile.get_path();
 
             if ((iconFile.query_file_type(Gio.FileQueryInfoFlags.NONE, null) == Gio.FileType.REGULAR) ||
-                this.is_bad_image(iconFile.get_path())) {
-                needs_refresh += 1;
+                this.isBadImage(iconFile.get_path())) {
+                needsRefresh += 1;
             }
         }
-        this.download_total_files = needs_refresh;
-        this.download_current_file = 0;
+        let jsonFile = this.cacheFolder.get_child(this.collectionType).get_child("index.json");
+        let rawMeta = JSON.stringify(this.indexCache, null, 4);
+        GLib.file_set_contents(jsonFile.get_path(), rawMeta);
 
-        let need_to_download = false;
-        for (uuid in uuids) {
-            if (this.abort_download > ABORT_NONE)
+        this.downloadTotalFiles = needsRefresh;
+        this.downloadCurrentFiles = 0;
+        let needToDownload = false;
+        this.downloadManager.clearAll();
+        for (let uuid in this.indexCache) {
+            if (this.abortDownload > ABORT_NONE)
                 return;
-            iconFile = Gio.file_new_for_path(this.index_cache[uuid]['icon_path']);
+            iconFile = Gio.file_new_for_path(this.indexCache[uuid]['icon_path']);
             if ((iconFile.query_file_type(Gio.FileQueryInfoFlags.NONE, null) == Gio.FileType.REGULAR) ||
-                this.is_bad_image(iconFile.get_path())) {
-                need_to_download = true;
-                //this.progress_bar_pulse();
-                this.download_current_file += 1;
-                let download_url = "";
-                if (!this.themes)
-                    download_url = URL_SPICES_HOME + this.index_cache[uuid]['icon'];
+                this.isBadImage(iconFile.get_path())) {
+                needToDownload = true;
+                //this.progressBarPulse();
+                this.downloadCurrentFiles += 1;
+                let downloadURL = "";
+                let server = this.repositories["default"].server_url;
+                let assets = this.repositories["default"].collections[this.collectionType].assets;
+                if (this.collectionType == "theme")
+                    downloadURL = "%s%s%s".format(server, assets, this.indexCache[uuid]['icon_filename']);
                 else
-                    download_url = "%s/uploads/themes/thumbs/%s".format(URL_SPICES_HOME, this.index_cache[uuid]['icon_filename']);
-                this.download_manager.push((this.load_assets_thread, (iconFile.get_path(), download_url)));
-                // thread.start_new_thread(this.load_assets_thread, (iconFile.get_path(), download_url));
+                    downloadURL = "%s/%s".format(server, this.indexCache[uuid]['icon']);
+                let job = new DownloadManager.DownloadJob(downloadURL, iconFile);
+                this.downloadManager.addJob(job);
             }
         }
-        if (!need_to_download)
-            this.load_assets_done();
+        if (!needToDownload) {
+            this._onLoadAssetsDone(this.downloadManager);
+        } else if(!this.currentTaskId) {
+            this.currentTaskId = this.downloadManager.connect("download-finished", Lang.bind(this, this._onLoadAssetsDone));
+            this.downloadManager.startDownloads();
+        }
     },
 
-    is_bad_image: function(path) {
+    isBadImage: function(path) {
         try {
             let file = Gio.file_new_for_path(path);
             if(!file.query_exists(null))
@@ -433,71 +470,64 @@ const SpiceHarvester = new GObject.Class({
         return false;
     },
 
-    load_assets_thread: function(path, url) {
-        let file = open(path, 'w');
-        let valid = true;
-
-        this.download(file, path, url);
-
-        this.load_assets_done();
-        //thread.exit();
-    },
-
-    load_assets_done: function() {
-        this.download_manager.prune_thread(thread.get_ident());
-        if (this.download_manager.busy())
-            return;
+    _onLoadAssetsDone: function(manager) {
+        if(this.currentTaskId) {
+            manager.disconnect(this.currentTaskId);
+            this.currentTaskId = null;
+            manager.clearAll();
+        }
         // Cleanup obsolete thumbs
         let trash = [];
         let fileEnum, info;
+        let dir = this.cacheFolder.get_child(this.collectionType);
         fileEnum = dir.enumerate_children('standard::name,standard::type', Gio.FileQueryInfoFlags.NONE, null);
         while ((info = fileEnum.next_file(null)) != null) {
             let f = info.get_name()
-            if (!(f in this.used_thumbs) && (f != "index.json")) {
+            if (!(f in this.usedThumbs) && (f != "index.json")) {
                 trash.push(f);
             }
         }
         for (let t in trash) {
             try {
-                this.cache_folder.get_child(t)['delete'](null);
+                dir.get_child(t)['delete'](null);
             } catch(e) {
                 continue;
             }
         }
-        ui_thread_do(this.progress_window.hide);
-        ui_thread_do(this.refresh_cache_done_callback, this.index_cache);
-        this.download_total_files = 0;
-        this.download_current_file = 0;
+        this.progressWindow.hide();
+        this.refreshCacheDoneCallback(this.indexCache);
+        this.downloadTotalFiles = 0;
+        this.downloadCurrentFiles = 0;
     },
 
-    sanitize_thumb: function(basename) {
+    sanitizeThumb: function(basename) {
         return basename.replace("jpg", "png").replace("JPG", "png").replace("PNG", "png");
     },
 
-    install_all: function(install_list, onFinished) {// install_list=[], onFinished=null
-        let need_restart = [];
+    installAll: function(installList, onFinished) {// installList=[], onFinished=null
+        let needRestart = [];
         let success = false;
-        for (let [uuid, is_update, is_active] in install_list) {
-            success = this.install(uuid, is_update, is_active);
+        for (let [uuid, isUpdate, isActive] in installList) {
+            success = this.install(uuid, isUpdate, isActive);
 
-            if (is_update && is_active && success)
-                need_restart.push(uuid);
+            if (isUpdate && isActive && success)
+                needRestart.push(uuid);
         }
-        ui_thread_do(this.progress_window.hide);
-        this.abort_download = false;
+        this.progressWindow.hide();
+        this.abortDownload = false;
 
-        ui_thread_do(onFinished, need_restart);
+        onFinished(needRestart);
         //thread.exit();
     },
 
-    get_members: function(zip) {
+    getMembers: function(zip) {
         let parts = [];
         for (let name in zip.namelist()) {
             if (!name.endswith('/')) {
                 parts.push(name.split('/'));
             }
         }
-        let prefix = (os.path.commonprefix(parts) || '');
+        let prefix = (this.commondPrefix(parts) || '');
         if (prefix)
             prefix = '/'.join(prefix) + '/';
         let offset = prefix.length;
@@ -511,76 +541,73 @@ const SpiceHarvester = new GObject.Class({
         }
     },
 
-    install: function(uuid, is_update, is_active) {
+    install: function(uuid, isUpdate, isActive) {
         //global.log("Start downloading and installation");
-        let title = this.index_cache[uuid]['name'];
+        let title = this.indexCache[uuid]['name'];
+        let server = this.repositories["default"].server_url;
+        let downloadURL = server + this.indexCache[uuid]['file'];
+        this.currentUUID = uuid;
 
-        let download_url = URL_SPICES_HOME + this.index_cache[uuid]['file'];
-        this.current_uuid = uuid;
+        this.uiInstallingXlet(title);
 
-        ui_thread_do(this.ui_installing_xlet, title);
+        let editedDate = this.indexCache[uuid]['last_edited'];
 
-        let edited_date = this.index_cache[uuid]['last_edited'];
-
-        if (!this.themes) {
-            let [fd, filename] = tempfile.mkstemp();
-            let dirname = tempfile.mkdtemp();
-            let f = os.fdopen(fd, 'wb');
+        if (this.collectionType != "theme") {
+            let filename = GLib.get_tmp_dir();
+            let tempfile = GLib.build_filenamev([filename, "temp"]);
+            let dirname = Glib.mkdtemp(tempfile);
             try {
-                this.download(f, filename, download_url);
-                let dest = os.path.join(this.install_folder, uuid);
-                let schema_filename = "";
+                this.download(dirname, filename, downloadURL);
+                let dest = this.installFolder.get_child(uuid);
+                let schemaFilename = "";
                 let zip = zipfile.ZipFile(filename);
-                zip.extractall(dirname, this.get_members(zip));
-                for (file in this.get_members(zip)) {
-                    /*if (!file.filename.endswith('/') && ((file.external_attr >> 16L) & 0o755) == 0o755) {
-                        os.chmod(os.path.join(dirname, file.filename), 0o755);
-                    } else if (file.filename[:3] == 'po/') {
-                        parts = os.path.splitext(file.filename);
-                        if (parts[1] == '.po') {
-                           this_locale_dir = os.path.join(locale_inst, parts[0][3:], 'LC_MESSAGES');
-                           ui_thread_do(this.progresslabel.set_text, _("Installing translations for %s...").format(title));
-                           rec_mkdir(this_locale_dir);
-                           //global.log("/usr/bin/msgfmt -c %s -o %s".format(os.path.join(dest, file.filename), os.path.join(this_locale_dir, '%s.mo' % uuid)));
-                           subprocess.call(["msgfmt", "-c", os.path.join(dirname, file.filename), "-o", os.path.join(this_locale_dir, "%s.mo".format(uuid))]);
-                           ui_thread_do(this.progresslabel.set_text, _("Installing %s...").format(title));
-                        }
-                    } else */if ("gschema.xml" in file.filename) {
-                        let sentence = _("Please enter your password to install the required settings schema for %s").format(uuid);
-                        if (os.path.exists("/usr/bin/gksu") && os.path.exists("/usr/share/cinnamon/cinnamon-settings/bin/installSchema.py")) {
-                            let launcher = "gksu  --message \"<b>%s</b>\"".format(sentence);
-                            let tool = "/usr/share/cinnamon/cinnamon-settings/bin/installSchema.py %s".format(os.path.join(dirname, file.filename));
-                            let command = "%s %s".format(launcher, tool);
+                zip.extractall(dirname, this.getMembers(zip));
+                for (file in this.getMembers(zip)) {
+                    //if (!file.filename.endswith('/')) {
+                    //    changeModeGFile(Gio.file_new_for_path(GLib.build_filenamev([dirname, file.filename]), 755));
+                    //} else if (file.filename[:3] == 'po/') {
+                    //    parts = os.path.splitext(file.filename);
+                    //    if (parts[1] == '.po') {
+                    //       this_locale_dir = this.localeFolder.get_child(parts[0].substring(3, parts[0].length)).get_child('LC_MESSAGES');
+                    //       this.progresslabel.set_text(_("Installing translations for %s...").format(title));
+                    //       rec_mkdir(this_locale_dir);
+                    //       //global.log("/usr/bin/msgfmt -c %s -o %s".format(dest.get_child(file.filename).get_path(), GLib.build_filenamev([this_locale_dir, "%s.mo".format(uuid)])));
+                    //       subprocess.call(["msgfmt", "-c", GLib.build_filenamev([dirname, file.filename]), "-o", GLib.build_filenamev([this_locale_dir, "%s.mo".format(uuid)])]);
+                    //       this.progresslabel.set_text(_("Installing %s...").format(title));
+                    //    }
+                    //} else 
+                    if ("gschema.xml" in file.filename) {
+                        let installerPath = GLib.build_filenamev([global.rootdatadir, "tools", "schemaInstaller.js"]);
+                        if (Gio.file_new_for_path(installerPath).query_exists(null)) {
+                            schemaFilename = file.get_basename();
+                            let command = "%s -i \"%s\"".format(installerPath, GLib.build_filenamev([dirname, schemaFilename]));
                             this._systemCall(command);
-                            let schema_filename = file.filename;
                         } else {
                             this.errorMessage(_("Could not install the settings schema for %s.  You will have to perform this step yourthis.").format(uuid));
                         }
                     }
                 }
-                let file = open(os.path.join(dirname, "metadata.json"), 'r');
-                let raw_meta = file.read();
-                file.close();
-                let md = json.loads(raw_meta);
-                md["last-edited"] = edited_date;
-                if (schema_filename != "")
-                    md["schema-file"] = schema_filename;
-                raw_meta = json.dumps(md, indent=4);
-                file = open(os.path.join(dirname, "metadata.json"), 'w+');
-                file.write(raw_meta);
-                file.close();
-                if (os.path.exists(dest))
-                    shutil.rmtree(dest);
-                shutil.copytree(dirname, dest);
-                shutil.rmtree(dirname);
-                os.remove(filename);
+                let jsonFile = GLib.build_filenamev([dirname, "metadata.json"]);
+                let [ok, rawMeta] = GLib.file_get_contents(jsonFile);
+                let md = JSON.parse(rawMeta);
+                md["last-edited"] = editedDate;
+                if (schemaFilename != "")
+                    md["schema-file"] = schemaFilename;
+                rawMeta = JSON.stringify(md, null, 4);
+                GLib.file_set_contents(jsonFile, rawData);
+                if (dest.query_exists(null)) {
+                    recursivelyDeleteDir(dest);
+                }
+                recursivelyCopyDir(dirname, dest);
+                recursivelyDeleteDir(dirname);
+                Gio.file_new_for_path(filename)['delete'](null);
             } catch(ge) {
-                ui_thread_do(this.progress_window.hide);
+                this.progressWindow.hide();
                 try {
-                    shutil.rmtree(dirname);
-                    os.remove(filename);
+                    recursivelyDeleteDir(dirname);
+                    Gio.file_new_for_path(filename)['delete'](null);
                 } catch(e) {}
-                if (!this.abort_download) {
+                if (!this.abortDownload) {
                     let msg = _("An error occurred during installation or updating. \
                               You may wish to report this incident to the developer of %s.\n\n\
                               If this was an update, the previous installation is unchanged").format(uuid);
@@ -589,81 +616,80 @@ const SpiceHarvester = new GObject.Class({
                 return false;
             }
         } else {
-            let [fd, filename] = tempfile.mkstemp();
-            let dirname = tempfile.mkdtemp();
-            let f = os.fdopen(fd, 'wb');
+            let filename = GLib.get_tmp_dir();
+            let tempfile = GLib.build_filenamev([filename, "temp"]);
+            let dirname = Glib.mkdtemp(tempfile);
             try {
-                this.download(f, filename, download_url);
-                let dest = this.install_folder;
+                this.download(dirname, filename, downloadURL);
                 let zip = zipfile.ZipFile(filename);
                 zip.extractall(dirname);
 
                 // Check dir name - it may or may not be the same as the theme name from our spices data
                 // Regardless, this will end up being the installed theme name, whether it matched or not
-                let temp_path = os.path.join(dirname, title);
-                if (!os.path.exists(temp_path)) {
-                    title = os.listdir(dirname)[0]; // We assume only a single folder, the theme name
-                    temp_path = os.path.join(dirname, title);
+                let tempPath = GLib.build_filenamev([dirname, title]);
+                if (!Gio.file_new_for_path(tempPath).query_exists(null)) {
+                    title = this._listdir(dirname)[0]; // We assume only a single folder, the theme name
+                    tempPath = GLib.build_filenamev([dirname, title]);
                 }
                 // Test for correct folder structure - look for cinnamon.css
-                let file = open(os.path.join(temp_path, "cinnamon", "cinnamon.css"), 'r');
-                file.close();
+                let filePath = GLib.build_filenamev([tempPath, "cinnamon", "cinnamon.css"]);
+                if(!Gio.file_new_for_path(filePath).query_exists(null))
+                    throw Error("We can not loacalized the file 'cinnamon.css' in the source package");
 
                 let md = {};
-                md["last-edited"] = edited_date;
+                md["last-edited"] = editedDate;
                 md["uuid"] = uuid;
-                let raw_meta = json.dumps(md, indent=4);
-                file = open(os.path.join(temp_path, "cinnamon", "metadata.json"), 'w+');
-                file.write(raw_meta);
-                file.close();
-                let final_path = os.path.join(dest, title);
-                if (os.path.exists(final_path))
-                    shutil.rmtree(final_path);
-                shutil.copytree(temp_path, final_path);
-                shutil.rmtree(dirname);
-                os.remove(filename);
+                let rawMeta = JSON.stringify(md, null, 4);
+                filePath = GLib.build_filenamev([tempPath, "cinnamon", "metadata.json"]);
+                GLib.file_set_contents(filePath, rawMeta);
 
-            } catch(e) {
-                ui_thread_do(this.progress_window.hide);
+                let finalPath = this.installFolder.get_child(title);
+                if (finalPath.query_exists(null))
+                    recursivelyDeleteDir(finalPath);
+                recursivelyCopyDir(Gio.file_new_for_path(tempPath), finalPath);
+                recursivelyDeleteDir(Gio.file_new_for_path(dirname));
+                Gio.file_new_for_path(filename)['delete'](null);
+            } catch(eg) {
+                this.progressWindow.hide();
                 try {
-                    shutil.rmtree(dirname);
-                    os.remove(filename);
+                    recursivelyDeleteDir(Gio.file_new_for_path(dirname));
+                    Gio.file_new_for_path(filename)['delete'](null);
                 } catch(e) {}
-                if (!this.themes)
-                    obj = uuid;
-                else
+                if (this.collectionType == "theme")
                     obj = title;
-                if (!this.abort_download) {
+                else
+                    obj = uuid;
+                if (!this.abortDownload) {
                     let msg = _("An error occurred during installation or updating. \
                               You may wish to report this incident to the developer of %s.\n\n\
                               If this was an update, the previous installation is unchanged").format(obj);
-                    this.errorMessage(msg, detail.toString());
+                    this.errorMessage(msg, eg.toString());
                 }
                 return false;
             }
         }
-        ui_thread_do(this.progress_button_abort.set_sensitive, false);
-        ui_thread_do(this.progress_window.show);
+        this.progressButtonAbort.set_sensitive(false);
+        this.progressWindow.show();
         return true;
     },
 
-    ui_installing_xlet: function(title) {
-        this.progress_window.show();
+    uiInstallingXlet: function(title) {
+        this.progressWindow.show();
         this.progresslabel.set_text(_("Installing %s...").format(title));
         this.progressbar.set_fraction(0);
     },
 
-    uninstall: function(uuid, name, schema_filename, onFinished=null) {
-        ui_thread_do(this.ui_uninstalling_xlet, name);
+    uninstall: function(uuid, name, schemaFilename, onFinished=null) {
+        this.uiUninstallingXlet(name);
 
         try {
-            if (!this.themes) {
-                if (schema_filename != "") {
+            if (this.collectionType != "theme") {
+                if (schemaFilename != "") {
                     let sentence = _("Please enter your password to remove the settings schema for %s").format(uuid);
-                    if (os.path.exists("/usr/bin/gksu") && os.path.exists("/usr/share/cinnamon/cinnamon-settings/bin/removeSchema.py")) {
-                        let launcher = "gksu  --message \"<b>%s</b>\"".format(sentence);
-                        let tool = "/usr/share/cinnamon/cinnamon-settings/bin/removeSchema.py %s".format(schema_filename);
-                        let command = "%s %s".format(launcher, tool);
+                    let installerPath = GLib.build_filenamev([global.rootdatadir, "tools", "schemaInstaller.js"]);
+                    if (Gio.file_new_for_path(installerPath).query_exists(null)) {
+                        schemaFilename = file.get_basename();
+                        let command = "%s -u \"%s\"".format(installerPath, GLib.build_filenamev([dirname, schemaFilename]));
                         this._systemCall(command);
                     } else {
                         this.errorMessage(_("Could not remove the settings schema for %s. \
@@ -671,73 +697,75 @@ const SpiceHarvester = new GObject.Class({
                                              This is not a critical error.").format(uuid));
                     }
                 }
-                shutil.rmtree(os.path.join(this.install_folder, uuid));
-
+                recursivelyDeleteDir(this.installFolder.get_child(uuid));
                 // Uninstall spice localization files, if any
-                if (os.path.exists(locale_inst)) {
-                    let i19_folders = os.listdir(locale_inst);
-                    for (i19_folder in i19_folders) {
-                        if (os.path.isfile(os.path.join(locale_inst, i19_folder, 'LC_MESSAGES', "%s.mo".format(uuid)))) {
-                            os.remove(os.path.join(locale_inst, i19_folder, 'LC_MESSAGES', "%s.mo".format(uuid)));
+                if (this.localeFolder.query_exists(null)) {
+                    let i19Folders = this._listdir(this.localeFolder);
+                    for (let pos in i19Folders) {
+                        let i19Folder = i19Folders[pos];
+                        let moFile = this.localeFolder.get_child(i19Folder).get_child('LC_MESSAGES').get_child("%s.mo".format(uuid));
+                        if (moFile.query_filesystem_info("standard::type", null).get_file_type() == Gio.FileType.REGULAR) {
+                            moFile['delete'](null);
                         }
                         // Clean-up this locale folder
-                        removeEmptyFolders(os.path.join(locale_inst, i19_folder));
+                        removeEmptyFolders(this.localeFolder.get_child(i19Folder));
                     }
                 }
-
                 // Uninstall settings file, if any
-                if (os.path.exists(os.path.join(settings_dir, uuid)))
-                    shutil.rmtree(os.path.join(settings_dir, uuid));
+                let settingDir = this.configFolder.get_child(uuid);
+                if (settingDir.query_exists(null))
+                    recursivelyDeleteDir(settingDir);
             } else {
-                shutil.rmtree(os.path.join(this.install_folder, name));
+                recursivelyDeleteDir(this.installFolder.get_child(name));
             }
         } catch(e) {
-            ui_thread_do(this.progress_window.hide);
-            this.errorMessage(_("Problem uninstalling %s.  You may need to manually remove it.").format(uuid), detail);
+            this.progressWindow.hide();
+            this.errorMessage(_("Problem uninstalling %s.  You may need to manually remove it.").format(uuid), e);
         }
-        ui_thread_do(this.progress_window.hide);
-        ui_thread_do(onFinished, uuid);
+        this.progressWindow.hide();
+        onFinished(uuid);
         //thread.exit();
     },
 
-    ui_uninstalling_xlet: function(name) {
+    uiUninstallingXlet: function(name) {
         this.progresslabel.set_text(_("Uninstalling %s...").format(name));
-        this.progress_window.show();
-        this.progress_bar_pulse();
+        this.progressWindow.show();
+        this.progressBarPulse();
     },
 
-    on_abort_clicked: function(button) {
-        this.abort_download = ABORT_USER;
-        this.progress_window.hide();
+    _onAbortClicked: function(button) {
+        this.downloadManager.stopAll();
+        this.abortDownload = ABORT_USER;
+        this.progressWindow.hide();
         return;
     },
 
-    // download_with_progressbar: function(outfd, outfile, caption, waitForClose) { //caption='Please wait..', waitForClose=true
+    // downloadWithProgressbar: function(outfd, outfile, caption, waitForClose) { //caption='Please wait..', waitForClose=true
     //     this.progressbar.set_fraction(0);
     //     this.progressbar.set_text('0%');
     //     this.progresslabel.set_text(caption);
-    //     this.progress_window.show();
+    //     this.progressWindow.show();
 
     //     while Gtk.events_pending() {
     //         Gtk.main_iteration();
     //     }
 
-    //     this.progress_bar_pulse();
+    //     this.progressBarPulse();
     //     this.download(outfd, outfile);
 
     //     if (!waitForClose) {
     //         time.sleep(0.5);
-    //         this.progress_window.hide();
+    //         this.progressWindow.hide();
     //     } else {
-    //         this.progress_button_abort.set_sensitive(false);
+    //         this.progressButtonAbort.set_sensitive(false);
     //     }
     // },
 
-    progress_bar_pulse: function() {
+    progressBarPulse: function() {
         let count = 0;
         this.progressbar.set_pulse_step(0.1);
         while (count < 1) {
-            time.sleep(0.1);
+            //time.sleep(0.1);
             this.progressbar.pulse();
             count += 1;
             while (Gtk.events_pending()) {
@@ -746,74 +774,74 @@ const SpiceHarvester = new GObject.Class({
         }
     },
 
-    download: function(outfd, outfile, url) {
-        ui_thread_do(this.progress_button_abort.set_sensitive, true);
+    download: function(outfile, url) {
+        this.progressButtonAbort.set_sensitive(true);
         try {
-            this.url_retrieve(url, outfd, this.reporthook);
+            this.urlRetrieve(url, outfile, this.reporthook);
         } catch(ge) {
             try {
-                os.remove(outfile);
+                outfile['delete'](null);
             } catch(e) {}
-            ui_thread_do(this.progress_window.hide);
-            if (this.abort_download == ABORT_ERROR)
+            this.progressWindow.hide();
+            if (this.abortDownload == ABORT_ERROR)
                 this.errorMessage(_("An error occurred while trying to access the server.  Please try again in a little while."), this.error);
-            throw Exception(_("Download aborted."));
+            throw Error(_("Download aborted."));
         }
         return outfile;
     },
 
     reporthook: function(count, blockSize, totalSize) {
         let fraction = 0
-        if (this.download_total_files > 1) {
-            fraction = 1.0 - (float(this.download_manager.get_n_jobs()) / float(this.download_total_files));
-            this.progressbar.set_text("%s - %d / %d files".format(parseInt(fraction*100).toString() + '%', this.download_total_files - this.download_manager.get_n_jobs(), this.download_total_files));
+        if (this.downloadTotalFiles > 1) {
+            fraction = 1.0 - (parseFloat(this.downloadManager.get_n_jobs()) / parseFloat(this.downloadTotalFiles));
+            this.progressbar.set_text("%s - %d / %d files".format(parseInt(fraction*100).toString() + '%', this.downloadTotalFiles - this.downloadManager.get_n_jobs(), this.downloadTotalFiles));
         } else {
-            fraction = count * blockSize / float((totalSize / blockSize + 1) * (blockSize));
+            fraction = count * blockSize / parseFloat((totalSize / blockSize + 1) * (blockSize));
             this.progressbar.set_text(parseInt(fraction * 100).toString() + '%');
         }
         if (fraction > 0)
             this.progressbar.set_fraction(fraction);
         else
-            this.progress_bar_pulse();
+            this.progressBarPulse();
 
         while (Gtk.events_pending()) {
             Gtk.main_iteration();
         }
     },
 
-    url_retrieve: function(url, f, reporthook) {
-        //Like the one in urllib. Unlike urllib.retrieve url_retrieve
+    urlRetrieve: function(url, file, reporthook) {
+        //Like the one in urllib. Unlike urllib.retrieve urlRetrieve
         //can be interrupted. KeyboardInterrupt exception is rasied when
         //interrupted.
         let count = 0;
         let blockSize = 1024 * 8;
         try {
-            let urlobj = urllib2.urlopen(url);
+            /*let urlobj = urllib2.urlopen(url);
             //assert urlobj.getcode() == 200;
             let data;
             let totalSize = parseInt(urlobj.info()['content-length']);
             try {
-                while (this.abort_download == ABORT_NONE) {
+                while (this.abortDownload == ABORT_NONE) {
                     data = urlobj.read(blockSize);
                     count += 1;
                     if (!data)
                         break;
                     f.write(data);
-                    ui_thread_do(reporthook, count, blockSize, totalSize);
+                    reporthook(count, blockSize, totalSize);
                 }
             } catch(e) {
                 f.close();
-                this.abort_download = ABORT_USER;
-            }
+                this.abortDownload = ABORT_USER;
+            }*/
             //delete urlobj;
         } catch(e) {
             f.close();
-            this.abort_download = ABORT_ERROR;
+            this.abortDownload = ABORT_ERROR;
             this.error = detail;
             throw KeyboardInterrupt;
         }
 
-        if (this.abort_download > ABORT_NONE)
+        if (this.abortDownload > ABORT_NONE)
             throw KeyboardInterrupt;
         f.close();
     },
@@ -830,41 +858,40 @@ const SpiceHarvester = new GObject.Class({
         return result;
     },
 
-    scrubConfigDirs: function(enabled_list) {
-        let active_list = {};
-        let settingsDir, fn, dir_list, id_list, panel, align, order, uuid, id, x, y;
-        for (let enabled in enabled_list) {
-            if (this.collection_type == "applet") {
+    scrubConfigDirs: function(enabledList) {
+        let activeList = {};
+        let fn, dirList, idList, panel, align, order, uuid, id, x, y;
+        for (let enabled in enabledList) {
+            if (this.collectionType == "applet") {
                 [panel, align, order, uuid, id] = enabled.split(":");
-            } else if (this.collection_type == "desklet") {
+            } else if (this.collectionType == "desklet") {
                 [uuid, id, x, y] = enabled.split(":");
             } else {
                 uuid = enabled;
                 id = 0;
             }
-            if (!(uuid in active_list)) {
-                id_list = [];
-                active_list[uuid] = id_list;
-                active_list[uuid].push(id);
+            if (!(uuid in activeList)) {
+                idList = [];
+                activeList[uuid] = idList;
+                activeList[uuid].push(id);
             } else {
-                active_list[uuid].push(id);
+                activeList[uuid].push(id);
             }
         }
-        settingsDir = Gio.file_new_for_path(settings_dir);
-        for (let uuid in active_list) {
-            if (settingsDir.get_child(uuid).query_exists(null)) {
-                dir_list = this._listdir(settingsDir.get_child(uuid));
+        for (let uuid in activeList) {
+            if (this.configFolder.get_child(uuid).query_exists(null)) {
+                dirList = this._listdir(this.configFolder.get_child(uuid));
                 fn = "%s.json".format(uuid);
-                if ((fn in dir_list) && (dir_list.length == 1))
-                    dir_list.remove(fn);
-                for (let id in active_list[uuid]) {
+                if ((fn in dirList) && (dirList.length == 1))
+                    dirList.remove(fn);
+                for (let id in activeList[uuid]) {
                     fn = "%s.json".format(id);
-                    if (fn in dir_list)
-                        dir_list.remove(fn);
+                    if (fn in dirList)
+                        dirList.remove(fn);
                 }
-                for (let jetsam in dir_list) {
+                for (let jetsam in dirList) {
                     try {
-                        settingsDir.get_child(uuid).get_child(jetsam)['delete'](null);
+                        this.configFolder.get_child(uuid).get_child(jetsam)['delete'](null);
                     } catch(e) {
                         continue;
                     }
@@ -873,9 +900,9 @@ const SpiceHarvester = new GObject.Class({
         }
     },
 
-    ui_error_message: function(msg, detail) { //detail = null
+    uiErrorMessage: function(msg, detail) { //detail = null
         let dialog = new Gtk.MessageDialog({
-            transient_for: null,
+            transient_for: this.window,
             modal: true,
             message_type: Gtk.MessageType.ERROR,
             buttons: Gtk.ButtonsType.OK
@@ -891,11 +918,11 @@ const SpiceHarvester = new GObject.Class({
     },
 
     errorMessage: function(msg, detail) { // detail=null
-        ui_thread_do(this.ui_error_message, msg, detail);
+        this.uiErrorMessage(msg, detail);
     },
 
-    on_progress_close: function(widget, event) {
-        this.abort_download = true;
+    _onProgressClose: function(widget, event) {
+        this.abortDownload = true;
         return widget.hide_on_delete();
     },
 });

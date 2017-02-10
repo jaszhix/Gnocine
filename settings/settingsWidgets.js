@@ -6,14 +6,16 @@
 
 const Gettext = imports.gettext;
 const Lang = imports.lang;
+const Mainloop = imports.mainloop;
 const Gio = imports.gi.Gio;
 const GLib = imports.gi.GLib;
 const GObject = imports.gi.GObject;
 const Gtk = imports.gi.Gtk;
+const Gdk = imports.gi.Gdk;
+const GdkPixbuf = imports.gi.GdkPixbuf;
 const GDesktopEnums = imports.gi.GDesktopEnums;
 const GnomeDesktop = imports.gi.GnomeDesktop;
 const Params = imports.misc.params;
-const Mainloop = imports.mainloop;
 
 const KeybindingWidgets = cimports.settings.keybindingWidgets;
 //const Gettext = Gettext.domain(ExtensionUtils.metadata['gettext-domain']);
@@ -28,8 +30,8 @@ const CAN_BACKEND = [
 ];
 
 const EditableEntry = new GObject.Class({
-    Name: 'ClassicGnome.EditableEntry',
-    GTypeName: 'ClassicGnomeEditableEntry',
+    Name: 'Gnocine.EditableEntry',
+    GTypeName: 'GnocineEditableEntry',
     Extends: Gtk.Stack,
     Signals: {
         'changed': {
@@ -114,11 +116,12 @@ const EditableEntry = new GObject.Class({
 });
 
 const SidePage = new GObject.Class({
-    Name: 'ClassicGnome.SidePage',
-    GTypeName: 'ClassicGnomeSidePage',
+    Name: 'Gnocine.SidePage',
+    GTypeName: 'GnocineSidePage',
 
     _init: function(name, icon, keywords, size, content_box, is_c_mod, is_standalone, exec_name, argv, window, module) {
         //content_box = null  //size = null //is_c_mod = false  //is_standalone = false //exec_name = null //module=null
+
         this.name = name;
         this.icon = icon;
         this.widgets = [];
@@ -132,6 +135,7 @@ const SidePage = new GObject.Class({
         this.topWindow = window;
         this.builder = null;
         this.stack = null;
+        this.isLoaded = false;
         if (this.module != null)
             this.module.loaded = false;
 
@@ -161,9 +165,8 @@ const SidePage = new GObject.Class({
         this.topWindow = window;
     },
 
-    load: function(window) {
-        this.topWindow = window;
-        this.build();
+    load: function() {
+       this.isLoaded = true;
     },
 
     build: function() {
@@ -249,8 +252,8 @@ const SidePage = new GObject.Class({
 });
 /*
 const CCModule = new GObject.Class({
-    Name: 'ClassicGnome.CCModule',
-    GTypeName: 'ClassicGnomeCCModule',
+    Name: 'Gnocine.CCModule',
+    GTypeName: 'GnocineCCModule',
 
     _init: function(label, mod_id, icon, category, keywords, content_box) {
         //label, icon, keywords, content_box, size=-1, is_c_mod=true, is_standalone=false, exec_name=mod_id, module=null
@@ -272,8 +275,8 @@ const CCModule = new GObject.Class({
 });
 
 const SAModule = new GObject.Class({
-    Name: 'ClassicGnome.SAModule',
-    GTypeName: 'ClassicGnomeSAModule',
+    Name: 'Gnocine.SAModule',
+    GTypeName: 'GnocineSAModule',
 
    _init: function(label, mod_id, icon, category, keywords, content_box) {
         this.sidePage = new SidePage(label, icon, keywords, content_box, false, false, true, mod_id);
@@ -331,8 +334,8 @@ function rec_mkdir(path) {
 }
 */
 const Section = new GObject.Class({
-    Name: 'ClassicGnome.Section',
-    GTypeName: 'ClassicGnomeSection',
+    Name: 'Gnocine.Section',
+    GTypeName: 'GnocineSection',
     Extends: Gtk.Box,
 
     _init: function(name) {
@@ -383,8 +386,8 @@ const Section = new GObject.Class({
 });
 
 const SectionBg = new GObject.Class({
-    Name: 'ClassicGnome.SectionBg',
-    GTypeName: 'ClassicGnomeSectionBg',
+    Name: 'Gnocine.SectionBg',
+    GTypeName: 'GnocineSectionBg',
     Extends: Gtk.Viewport,
 
     _init: function() {
@@ -397,8 +400,8 @@ const SectionBg = new GObject.Class({
 });
 
 const SettingsStack = new GObject.Class({
-    Name: 'ClassicGnome.SettingsStack',
-    GTypeName: 'ClassicGnomeSettingsStack',
+    Name: 'Gnocine.SettingsStack',
+    GTypeName: 'GnocineSettingsStack',
     Extends: Gtk.Stack,
 
     _init: function() {
@@ -410,8 +413,8 @@ const SettingsStack = new GObject.Class({
 });
 
 const SettingsRevealer = new GObject.Class({
-    Name: 'ClassicGnome.SettingsRevealer',
-    GTypeName: 'ClassicGnomeSettingsRevealer',
+    Name: 'Gnocine.SettingsRevealer',
+    GTypeName: 'GnocineSettingsRevealer',
     Extends: Gtk.Revealer,
 
     _init: function(schema, key, values) {//schema=null, key=null, values=null
@@ -447,8 +450,8 @@ const SettingsRevealer = new GObject.Class({
 });
 
 const SettingsPage = new GObject.Class({
-    Name: 'ClassicGnome.SettingsPage',
-    GTypeName: 'ClassicGnomeSettingsPage',
+    Name: 'Gnocine.SettingsPage',
+    GTypeName: 'GnocineSettingsPage',
     Extends: Gtk.Box,
 
     _init: function() {
@@ -478,8 +481,8 @@ const SettingsPage = new GObject.Class({
 });
 
 const SettingsBox = new GObject.Class({
-    Name: 'ClassicGnome.SettingsBox',
-    GTypeName: 'ClassicGnomeSettingsBox',
+    Name: 'Gnocine.SettingsBox',
+    GTypeName: 'GnocineSettingsBox',
     Extends: Gtk.Frame,
 
     _init: function(title) {
@@ -535,7 +538,7 @@ const SettingsBox = new GObject.Class({
         list_box.set_selection_mode(Gtk.SelectionMode.NONE);
         let row = new Gtk.ListBoxRow();
         row.add(widget);
-        if (widget.Name === 'ClassicGnome.Switch') { // instanceof didn't work here
+        if (widget.Name === 'Gnocine.Switch') { // instanceof didn't work here
             list_box.connect("row-activated", Lang.bind(widget, widget.clicked));
         }
         list_box.add(row);
@@ -554,7 +557,7 @@ const SettingsBox = new GObject.Class({
         list_box.set_selection_mode(Gtk.SelectionMode.NONE);
         let row = Gtk.ListBoxRow();
         row.add(widget);
-        if (widget.Name === 'ClassicGnome.Switch') { // instanceof didn't work here
+        if (widget.Name === 'Gnocine.Switch') { // instanceof didn't work here
             list_box.connect("row-activated", Lang.bind(widget, widget.clicked));
         }
         list_box.add(row);
@@ -571,8 +574,8 @@ const SettingsBox = new GObject.Class({
 });
 
 const SettingsWidget = new GObject.Class({
-    Name: 'ClassicGnome.SettingsWidget',
-    GTypeName: 'ClassicGnomeSettingsWidget',
+    Name: 'Gnocine.SettingsWidget',
+    GTypeName: 'GnocineSettingsWidget',
     Extends: Gtk.Box,
 
     _init: function(dep_key) { //dep_key=null
@@ -594,7 +597,7 @@ const SettingsWidget = new GObject.Class({
             dep_key = dep_key.substring(1, dep_key.length);
             flag |= Gio.Settings.BindFlags.INVERT_BOOLEAN;
         }
-        split = dep_key.split("/");
+        let split = dep_key.split("/");
         dep_settings = Gio.Settings.new(split[0]);
         dep_settings.bind(split[1], this, "sensitive", flag);
     },
@@ -620,8 +623,8 @@ const SettingsWidget = new GObject.Class({
 });
 
 const SettingsLabel = new GObject.Class({
-    Name: 'ClassicGnome.SettingsLabel',
-    GTypeName: 'ClassicGnomeSettingsLabel',
+    Name: 'Gnocine.SettingsLabel',
+    GTypeName: 'GnocineSettingsLabel',
     Extends: Gtk.Label,
 
     _init: function(text) { //text=null
@@ -641,8 +644,8 @@ const SettingsLabel = new GObject.Class({
 
 
 const IndentedHBox = new GObject.Class({
-    Name: 'ClassicGnome.IndentedHBox',
-    GTypeName: 'ClassicGnomeIndentedHBox',
+    Name: 'Gnocine.IndentedHBox',
+    GTypeName: 'GnocineIndentedHBox',
     Extends: Gtk.HBox,
 
     _init: function() {
@@ -661,14 +664,15 @@ const IndentedHBox = new GObject.Class({
 });
 
 const Switch = new GObject.Class({
-    Name: 'ClassicGnome.Switch',
-    GTypeName: 'ClassicGnomeSwitch',
+    Name: 'Gnocine.Switch',
+    GTypeName: 'GnocineSwitch',
     Extends: SettingsWidget,
     bind_prop: "active",
     bind_dir: Gio.SettingsBindFlags.DEFAULT,
 
     _init: function(params) {
         params = Params.parse(params, { label: "", dep_key: null, tooltip: "" });
+        //lobal.log("was" + str(**kwargs) + "\n")
         this.parent(params.dep_key);
         this.content_widget = new Gtk.Switch();
         this.label = new SettingsLabel(params.label);
@@ -692,8 +696,8 @@ const Switch = new GObject.Class({
 });
 
 const SpinButton = new GObject.Class({
-    Name: 'ClassicGnome.SpinButton',
-    GTypeName: 'ClassicGnomeSpinButton',
+    Name: 'Gnocine.SpinButton',
+    GTypeName: 'GnocineSpinButton',
     Extends: SettingsWidget,
     bind_prop: "value",
     bind_dir: Gio.SettingsBindFlags.GET,
@@ -760,8 +764,8 @@ const SpinButton = new GObject.Class({
 });
 
 const Entry = new GObject.Class({
-    Name: 'ClassicGnome.Entry',
-    GTypeName: 'ClassicGnomeEntry',
+    Name: 'Gnocine.Entry',
+    GTypeName: 'GnocineEntry',
     Extends: SettingsWidget,
     bind_prop: "text",
     bind_dir: Gio.SettingsBindFlags.DEFAULT,
@@ -783,12 +787,20 @@ const Entry = new GObject.Class({
 
         if (params.size_group)
             this.add_to_size_group(params.size_group);
+
+        this.content_widget.set_text(this.state);
+
+        this.content_widget.connect("changed", Lang.bind(this, this.apply));
+    },
+
+    apply: function(entry, edit) {
+        this.set_value(this.content_widget.get_text());
     },
 });
 
 const TextView = new GObject.Class({
-    Name: 'ClassicGnome.TextView',
-    GTypeName: 'ClassicGnomeTextView',
+    Name: 'Gnocine.TextView',
+    GTypeName: 'GnocineTextView',
     Extends: SettingsWidget,
     bind_prop: "text",
     bind_dir: Gio.SettingsBindFlags.DEFAULT,
@@ -826,8 +838,8 @@ const TextView = new GObject.Class({
 });
 
 const FontButton = new GObject.Class({
-    Name: 'ClassicGnome.FontButton',
-    GTypeName: 'ClassicGnomeFontButton',
+    Name: 'Gnocine.FontButton',
+    GTypeName: 'GnocineFontButton',
     Extends: SettingsWidget,
     bind_prop: "font-name",
     bind_dir: Gio.SettingsBindFlags.DEFAULT,
@@ -854,8 +866,8 @@ const FontButton = new GObject.Class({
 });
 
 const Range = new GObject.Class({
-    Name: 'ClassicGnome.Range',
-    GTypeName: 'ClassicGnomeRange',
+    Name: 'Gnocine.Range',
+    GTypeName: 'GnocineRange',
     Extends: SettingsWidget,
     bind_prop: "font-name",
     bind_dir: Gio.SettingsBindFlags.DEFAULT,
@@ -970,8 +982,8 @@ const Range = new GObject.Class({
 });
 
 const ComboBox = new GObject.Class({
-    Name: 'ClassicGnome.ComboBox',
-    GTypeName: 'ClassicGnomeComboBox',
+    Name: 'Gnocine.ComboBox',
+    GTypeName: 'GnocineComboBox',
     Extends: SettingsWidget,
     bind_dir: null,
 
@@ -1007,9 +1019,11 @@ const ComboBox = new GObject.Class({
     },
 
     on_my_value_changed: function(widget) {
-        tree_iter = widget.get_active_iter();
+        let tree_iter = widget.get_active_iter();
+
         if (tree_iter != null) {
-            this.value = this.model[tree_iter][0];
+            this.content_widget.set_active_iter(tree_iter[1]);
+            this.value = this.model.get_value(tree_iter[1], 0)
             this.set_value(this.value);
         }
     },
@@ -1030,17 +1044,15 @@ const ComboBox = new GObject.Class({
     set_options: function(options) {
         // assume all keys are the same type (mixing types is going to cause an error somewhere)
 
-        // type is undefined here
-        // let var_type = type(options[0][0]);
-        this.model = new Gtk.ListStore();
-        //this.model.set_column_types ([var_type, GObject.TYPE_STRING]);
-        this.model.set_column_types ([GObject.TYPE_STRING]);
+        this.model = Gtk.ListStore.new([GObject.TYPE_STRING, GObject.TYPE_STRING]);
 
-        // error: this.model.push is not a function
-        /*for (let option in options) {
-            global.log(Object.keys(this.model))
-            this.option_map[option[0]] = this.model.push([option[0], option[1]]);
-        }*/
+        // Set the columns
+        for (let i = 0; i < options.length; i++) {
+            let option = options[i];
+            let iter = this.model.append();
+            this.option_map[option[0]] = iter;
+            this.model.set(iter, [0, 1], [option[1].toString(), option[0].toString()])
+        }
 
         this.content_widget.set_model(this.model);
         this.content_widget.set_id_column(0);
@@ -1048,8 +1060,8 @@ const ComboBox = new GObject.Class({
 });
 
 const ColorChooser = new GObject.Class({
-    Name: 'ClassicGnome.ColorChooser',
-    GTypeName: 'ClassicGnomeColorChooser',
+    Name: 'Gnocine.ColorChooser',
+    GTypeName: 'GnocineColorChooser',
     Extends: SettingsWidget,
     bind_dir: null,
 
@@ -1096,8 +1108,8 @@ const ColorChooser = new GObject.Class({
 });
 
 const FileChooser = new GObject.Class({
-    Name: 'ClassicGnome.FileChooser',
-    GTypeName: 'ClassicGnomeFileChooser',
+    Name: 'Gnocine.FileChooser',
+    GTypeName: 'GnocineFileChooser',
     Extends: SettingsWidget,
     bind_dir: null,
 
@@ -1121,6 +1133,8 @@ const FileChooser = new GObject.Class({
 
         if (params.size_group)
             this.add_to_size_group(params.size_group);
+
+        this.content_widget.set_uri(this.state);
     },
 
     on_file_selected: function(args) {
@@ -1137,8 +1151,8 @@ const FileChooser = new GObject.Class({
 });
 
 const SoundFileChooser = new GObject.Class({
-    Name: 'ClassicGnome.SoundFileChooser',
-    GTypeName: 'ClassicGnomeSoundFileChooser',
+    Name: 'Gnocine.SoundFileChooser',
+    GTypeName: 'GnocineSoundFileChooser',
     Extends: SettingsWidget,
     bind_dir: null,
 
@@ -1248,8 +1262,8 @@ const SoundFileChooser = new GObject.Class({
 
 
 const IconChooser = new GObject.Class({
-    Name: 'ClassicGnome.SoundIconChooser',
-    GTypeName: 'ClassicGnomeSoundIconChooser',
+    Name: 'Gnocine.IconChooser',
+    GTypeName: 'GnocineIconChooser',
     Extends: SettingsWidget,
     bind_prop: "text",
     bind_dir: Gio.SettingsBindFlags.DEFAULT,
@@ -1286,27 +1300,41 @@ const IconChooser = new GObject.Class({
         if (params.size_group) {
             this.add_to_size_group(params.size_group);
         }
+
+        this.set_icon(this.bind_object, this.state)
     },
 
-    set_icon: function(args) {
-        val = this.bind_object.get_text();
-        let fileInfo = Gio.file_new_for_path(val).query_info('standard::type', 0, null);
+    set_icon: function(entry, _val) {
+        let val = _val ? _val : this.bind_object.get_text();
+        this.bind_object.set_text(val)
+        let fileInfo;
+
+        try {
+            fileInfo = Gio.file_new_for_path(val).query_info('standard::type', 0, null);
+        } catch (e) {
+            return false;
+        }
+
         if (fileInfo.get_file_type() == Gio.FileType.REGULAR) {
-            img = GdkPixbuf.Pixbuf.new_from_file_at_size(val, this.width, this.height);
+            let img = GdkPixbuf.Pixbuf.new_from_file_at_size(val, this.width, this.height);
             this.preview.set_from_pixbuf(img);
         } else {
             this.preview.set_from_icon_name(val, Gtk.IconSize.BUTTON);
         }
+
+        this.set_value(val);
     },
 
     on_button_pressed: function(widget) {
         let dialog = new Gtk.FileChooserDialog({
             title: _("Choose an Icon"),
             action: Gtk.FileChooserAction.OPEN,
-            //transient_for: this.get_toplevel(),
-            //buttons: [_("_Cancel"), Gtk.ResponseType.CANCEL,
-            //          _("_Open"), Gtk.ResponseType.OK]
+            transient_for: this.get_toplevel(),
+            use_header_bar: true,
+            select_multiple: false,
         });
+        dialog.add_button(_('_Cancel'), Gtk.ResponseType.CANCEL);
+        dialog.add_button(_("_Open"), Gtk.ResponseType.OK);
 
         let filter_text = new Gtk.FileFilter();
         filter_text.set_name(_("Image files"));
@@ -1333,7 +1361,7 @@ const IconChooser = new GObject.Class({
         if (filename != null) {
             let fileInfo = Gio.file_new_for_path(filename).query_info('standard::type', 0, null);
             if (fileInfo.get_file_type() == Gio.FileType.REGULAR) {
-                pixbuf = GdkPixbuf.Pixbuf.new_from_file(filename);
+                let pixbuf = GdkPixbuf.Pixbuf.new_from_file(filename);
                 if (pixbuf != null) {
                     if (pixbuf.get_width() > 128) {
                         pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_size(filename, 128, -1);
@@ -1350,8 +1378,8 @@ const IconChooser = new GObject.Class({
 
 
 const TweenChooser = new GObject.Class({
-    Name: 'ClassicGnome.TweenChooser',
-    GTypeName: 'ClassicGnomeTweenChooser',
+    Name: 'Gnocine.TweenChooser',
+    GTypeName: 'GnocineTweenChooser',
     Extends: SettingsWidget,
     bind_prop: "tween",
     bind_dir: Gio.SettingsBindFlags.DEFAULT,
@@ -1377,8 +1405,8 @@ const TweenChooser = new GObject.Class({
 });
 
 const EffectChooser = new GObject.Class({
-    Name: 'ClassicGnome.EffectChooser',
-    GTypeName: 'ClassicGnomeEffectChooser',
+    Name: 'Gnocine.EffectChooser',
+    GTypeName: 'GnocineEffectChooser',
     Extends: SettingsWidget,
     bind_prop: "effect",
     bind_dir: Gio.SettingsBindFlags.DEFAULT,
@@ -1404,8 +1432,8 @@ const EffectChooser = new GObject.Class({
 });
 
 const DateChooser = new GObject.Class({
-    Name: 'ClassicGnome.DateChooser',
-    GTypeName: 'ClassicGnomeDateChooser',
+    Name: 'Gnocine.DateChooser',
+    GTypeName: 'GnocineDateChooser',
     Extends: SettingsWidget,
     bind_dir: null,
 
@@ -1444,8 +1472,8 @@ const DateChooser = new GObject.Class({
 });
 
 const Keybinding = new GObject.Class({
-    Name: 'ClassicGnome.Keybinding',
-    GTypeName: 'ClassicGnomeKeybinding',
+    Name: 'Gnocine.Keybinding',
+    GTypeName: 'GnocineKeybinding',
     Extends: SettingsWidget,
     bind_dir: null,
 
@@ -1491,12 +1519,10 @@ const Keybinding = new GObject.Class({
 
     on_kb_changed: function(args) {
         let bindings = [];
-
         for (let x = 0; x < this.num_bind; x++) {
             bindings.push(this.buttons[x].get_accel_string());
         }
-
-        this.set_value("::".join(bindings));
+        this.set_value(bindings.join("::"));
     },
 
     on_setting_changed: function(args) {
@@ -1513,8 +1539,8 @@ const Keybinding = new GObject.Class({
 
 
 const Button = new GObject.Class({
-    Name: 'ClassicGnome.Button',
-    GTypeName: 'ClassicGnomeButton',
+    Name: 'Gnocine.Button',
+    GTypeName: 'GnocineButton',
     Extends: SettingsWidget,
     bind_dir: null,
 
@@ -1546,8 +1572,8 @@ const Button = new GObject.Class({
 });
 
 const Text = new GObject.Class({
-    Name: 'ClassicGnome.Text',
-    GTypeName: 'ClassicGnomeText',
+    Name: 'Gnocine.Text',
+    GTypeName: 'GnocineText',
     Extends: SettingsWidget,
     bind_dir: null,
 

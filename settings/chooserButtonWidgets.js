@@ -37,8 +37,8 @@ const ANIMATION_DURATION = 800;
 const ANIMATION_FRAME_RATE = 20;
 
 const BaseChooserButton = new GObject.Class({
-    Name: 'ClassicGnome.BaseChooserButton',
-    GTypeName: 'ClassicGnomeBaseChooserButton',
+    Name: 'Gnocine.BaseChooserButton',
+    GTypeName: 'GnocineBaseChooserButton',
     Extends: Gtk.Button,
 
     _init: function(has_button_label) {//has_button_label=false
@@ -97,8 +97,8 @@ const BaseChooserButton = new GObject.Class({
 });
 
 const PictureChooserButton = new GObject.Class({
-    Name: 'ClassicGnome.PictureChooserButton',
-    GTypeName: 'ClassicGnomePictureChooserButton',
+    Name: 'Gnocine.PictureChooserButton',
+    GTypeName: 'GnocinePictureChooserButton',
     Extends: BaseChooserButton,
 
     _init: function(num_cols, button_picture_size, menu_pictures_size, has_button_label) {
@@ -230,8 +230,8 @@ const PictureChooserButton = new GObject.Class({
 });
 
 const DateChooserButton = new GObject.Class({
-    Name: 'ClassicGnome.DateChooserButton',
-    GTypeName: 'ClassicGnomeDateChooserButton',
+    Name: 'Gnocine.DateChooserButton',
+    GTypeName: 'GnocineDateChooserButton',
     Extends: Gtk.Button,
     Signals: {
         'date-changed': {
@@ -326,8 +326,8 @@ function draw_window(context, x, y, color, alpha, scale) { //alpha = 1, scale = 
 // to EFFECT_STYLES_NAME above
 
 const none = new GObject.Class({
-    Name: 'ClassicGnome.none',
-    GTypeName: 'ClassicGnomenone',
+    Name: 'Gnocine.none',
+    GTypeName: 'Gnocinenone',
 
     _init: function() {
     },
@@ -338,8 +338,8 @@ const none = new GObject.Class({
 });
 
 const scale = new GObject.Class({
-    Name: 'ClassicGnome.scale',
-    GTypeName: 'ClassicGnomescale',
+    Name: 'Gnocine.scale',
+    GTypeName: 'Gnocinescale',
 
     _init: function() {
     },
@@ -357,8 +357,8 @@ const scale = new GObject.Class({
 });
 
 const fade = new GObject.Class({
-    Name: 'ClassicGnome.fade',
-    GTypeName: 'ClassicGnomefade',
+    Name: 'Gnocine.fade',
+    GTypeName: 'Gnocinefade',
 
     _init: function() {
     },
@@ -374,8 +374,8 @@ const fade = new GObject.Class({
 });
 
 const blend = new GObject.Class({
-    Name: 'ClassicGnome.blend',
-    GTypeName: 'ClassicGnomeblend',
+    Name: 'Gnocine.blend',
+    GTypeName: 'Gnocineblend',
 
     _init: function() {
     },
@@ -394,8 +394,8 @@ const blend = new GObject.Class({
 });
 
 const traditional = new GObject.Class({
-    Name: 'ClassicGnome.traditional',
-    GTypeName: 'ClassicGnometraditional',
+    Name: 'Gnocine.traditional',
+    GTypeName: 'Gnocinetraditional',
 
     _init: function() {
     },
@@ -422,8 +422,8 @@ const traditional = new GObject.Class({
 });
 
 const move = new GObject.Class({
-    Name: 'ClassicGnome.move',
-    GTypeName: 'ClassicGnomemove',
+    Name: 'Gnocine.move',
+    GTypeName: 'Gnocinemove',
 
     _init: function() {
     },
@@ -447,8 +447,8 @@ const move = new GObject.Class({
 });
 
 const flyUp = new GObject.Class({
-    Name: 'ClassicGnome.flyUp',
-    GTypeName: 'ClassicGnomeflyUp',
+    Name: 'Gnocine.flyUp',
+    GTypeName: 'GnocineflyUp',
 
     _init: function() {
     },
@@ -469,8 +469,8 @@ const flyUp = new GObject.Class({
 });
 
 const flyDown = new GObject.Class({
-    Name: 'ClassicGnome.flyDown',
-    GTypeName: 'ClassicGnomeflyDown',
+    Name: 'Gnocine.flyDown',
+    GTypeName: 'GnocineflyDown',
 
     _init: function() {
     },
@@ -492,8 +492,8 @@ const flyDown = new GObject.Class({
 
 // a button to select tweens
 const TweenChooserButton = new GObject.Class({
-    Name: 'ClassicGnome.TweenChooserButton',
-    GTypeName: 'ClassicGnomeTweenChooserButton',
+    Name: 'Gnocine.TweenChooserButton',
+    GTypeName: 'GnocineTweenChooserButton',
     Extends: BaseChooserButton,
     Properties: {
         "tween": GObject.ParamSpec.string(
@@ -551,8 +551,8 @@ const TweenChooserButton = new GObject.Class({
 
 // menu item for TweenChooserButton
 const TweenMenuItem = new GObject.Class({
-    Name: 'ClassicGnome.TweenMenuItem',
-    GTypeName: 'ClassicGnomeTweenMenuItem',
+    Name: 'Gnocine.TweenMenuItem',
+    GTypeName: 'GnocineTweenMenuItem',
     Extends: Gtk.MenuItem,
 
     _init: function(tween_type) {
@@ -656,8 +656,8 @@ const TweenMenuItem = new GObject.Class({
 
 // a button to select effect types
 const EffectChooserButton = new GObject.Class({
-    Name: 'ClassicGnome.EffectChooserButton',
-    GTypeName: 'ClassicGnomeEffectChooserButton',
+    Name: 'Gnocine.EffectChooserButton',
+    GTypeName: 'GnocineEffectChooserButton',
     Extends: BaseChooserButton,
     Properties: {
         "effect": GObject.ParamSpec.string(
@@ -724,8 +724,8 @@ const EffectChooserButton = new GObject.Class({
 
 // menu item for TweenChooserButton
 const EffectMenuItem = new GObject.Class({
-    Name: 'ClassicGnome.EffectMenuItem',
-    GTypeName: 'ClassicGnomeEffectMenuItem',
+    Name: 'Gnocine.EffectMenuItem',
+    GTypeName: 'GnocineEffectMenuItem',
     Extends: Gtk.MenuItem,
 
     _init: function() {

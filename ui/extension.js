@@ -49,10 +49,10 @@ function _createExtensionType(name, folder, manager, overrides){
     // Add signal methods
     Signals.addSignalMethods(type);
 
-    if (!global.usercinnamondatadir || global.usercinnamondatadir === undefined) {
-        global.usercinnamondatadir = GLib.build_filenamev([global.userdatadir, "extensions", "gnocine@json"]);
+    if (!global.userclassicdatadir || global.userclassicdatadir === undefined) {
+        global.userclassicdatadir = GLib.build_filenamev([GLib.get_user_data_dir(), Config.USER_INSTALL_FOLDER]);
     }
-    let path = GLib.build_filenamev([global.usercinnamondatadir, folder]);
+    let path = GLib.build_filenamev([global.userclassicdatadir, folder]);
     type.userDir = path;
 
     // create user directories if they don't exist.
@@ -157,7 +157,7 @@ Extension.prototype = {
         this.loadIconDirectory(this.dir);
         let oldSearchPath = imports.searchPath.slice();  // make a copy
         try {
-            imports.searchPath = [global.usercinnamondatadir];
+            imports.searchPath = [global.rootdatadir, global.userclassicdatadir];
             // importing a "subdir" creates a new importer object that doesn't affect
             // the global one
             type.maps.importObjects[this.uuid] = imports[this.lowerType+"s"][this.uuid];

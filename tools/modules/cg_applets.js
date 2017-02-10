@@ -1,6 +1,5 @@
-/* -*- mode: js; js-basic-offset: 4; indent-tabs-mode: nil -*- */
 /* ========================================================================================================
- * cg_applets.js - Module for display the Classic Gnome xlet applets -
+ * cg_applets.js - Module for display the Gnocine xlet applets -
  * ========================================================================================================
  */
 
@@ -32,21 +31,22 @@ const Module = new GObject.Class({
         return ((args.length > 1) && (args[0] == "applets"));
     },
 
-    get_side_page: function(args) {
-        let keywords = [_("xlet"), _("applet"), _("extension"), _("settings"), _("configuration")];
-        this.sidePage = new AppletsViewSidePage(_("Applets"), "cs-applets", keywords, null, "applet", args, window, this);
+    get_side_page: function(args, window) {
+        if(!this.sidePage) {
+            let keywords = [_("xlet"), _("applet"), _("extension"), _("settings"), _("configuration")];
+            this.sidePage = new AppletsViewSidePage(_("Applets"), "cs-applets", keywords, null, "applet", args, window, this);
+        }
         return this.sidePage;
     },
 
     on_module_selected: function() {
-        if (!this.loaded) {
-            global.log("Loading Applets module");
-            this.sidePage.load();
+        if(this.sidePage) {
+            if (!this.sidePage.isLoaded) {
+                global.log("Loading Applets module");
+                this.sidePage.load();
+            }
+            this.sidePage.build();
         }
-    },
-
-    _setParentRef: function(window) {
-        this.sidePage.window = window;
     },
 });
 

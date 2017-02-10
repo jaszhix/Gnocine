@@ -10,6 +10,7 @@ const GLib = imports.gi.GLib;
 const GObject = imports.gi.GObject;
 const Gtk = imports.gi.Gtk;
 const Gdk = imports.gi.Gdk;
+const Clutter = imports.gi.Clutter;
 
 const _ = Gettext.gettext;
 
@@ -31,8 +32,8 @@ const FORBIDDEN_KEYVALS = [
 
 //GObject.TYPE_INT
 const ButtonKeybinding = new GObject.Class({
-    Name: 'ClassicGnome.ButtonKeybinding',
-    GTypeName: 'ClassicGnomeButtonKeybinding',
+    Name: 'Gnocine.ButtonKeybinding',
+    GTypeName: 'GnocineButtonKeybinding',
     Extends: Gtk.TreeView,
     Signals: {
         'accel-edited': {
@@ -59,7 +60,6 @@ const ButtonKeybinding = new GObject.Class({
         this.set_headers_visible(false);
         this.set_enable_search(false);
         this.set_hover_selection(true);
-        this.entry_store = null;
         this.accel_string = "";
         this.keybinding_cell = new CellRendererKeybinding(this, null);
         this.keybinding_cell.set_alignment(.5,.5);
@@ -68,14 +68,15 @@ const ButtonKeybinding = new GObject.Class({
 
         let col = new Gtk.TreeViewColumn({ title: "binding" });//accel_string=0
         col.pack_start (this.keybinding_cell, true);
+        col.add_attribute (this.keybinding_cell, "text", 0);
         col.set_alignment(.5);
 
+        this.entry_store = new Gtk.ListStore(); // Accel string
+        this.entry_store.set_column_types([GObject.TYPE_STRING]);
+        this.set_model(this.entry_store);
         this.append_column(col);
-
-        this.keybinding_cell.set_property('editable', true);
-
         this.load_model();
-
+        this.keybinding_cell.set_property('editable', true);
         this.connect("focus-out-event", Lang.bind(this, this.on_focus_lost));
     },
 
@@ -96,13 +97,9 @@ const ButtonKeybinding = new GObject.Class({
     },
 
     load_model: function() {
-        if (this.entry_store)
-            this.entry_store.clear();
-
-        this.entry_store = new Gtk.ListStore(GObject.TYPE_STRING); // Accel string
-        this.entry_store.append([this.accel_string]);
-
-        this.set_model(this.entry_store);
+        this.entry_store.clear();
+        let iter = this.entry_store.append();
+        this.entry_store.set(iter, [0], [this.accel_string]);
     },
 
     do_get_property: function(prop) {
@@ -132,8 +129,8 @@ const ButtonKeybinding = new GObject.Class({
 });
 
 const CellRendererKeybinding = new GObject.Class({
-    Name: 'ClassicGnome.CellRendererKeybinding',
-    GTypeName: 'ClassicGnomeCellRendererKeybinding',
+    Name: 'Gnocine.CellRendererKeybinding',
+    GTypeName: 'GnocineCellRendererKeybinding',
     Extends: Gtk.CellRendererText,
     Signals: {
         'accel-edited': {
@@ -247,14 +244,17 @@ const CellRendererKeybinding = new GObject.Class({
         event = this.press_event;
 
         let display = widget.get_display();
-        let keyval = 0;
+        let [, keyval] = event.get_keyval();
         let group = event.group;
-        let accel_mods = event.state;
+        let [, accel_mods] = event.get_state();
+
+        if(group === undefined)
+            group = 0;
 
         // HACK: we don't want to use SysRq as a keybinding (but we do
         // want Alt+Print), so we avoid translation from Alt+Print to SysRq
         let consumed_modifiers;
-        if ((event.keyval == Gdk.KEY_Sys_Req) &&
+        if ((keyval == Gdk.KEY_Sys_Req) &&
            ((accel_mods & Gdk.ModifierType.MOD1_MASK) != 0)) {
             keyval = Gdk.KEY_Print;
             consumed_modifiers = 0;
@@ -280,7 +280,7 @@ const CellRendererKeybinding = new GObject.Class({
                 consumed_modifiers &= ~shift_group_mask;
         }
 
-        accel_key = Gdk.keyval_to_lower(keyval);
+        let accel_key = Gdk.keyval_to_lower(keyval);
         if (accel_key == Gdk.KEY_ISO_Left_Tab)
             accel_key = Gdk.KEY_Tab;
 
@@ -307,8 +307,8 @@ const CellRendererKeybinding = new GObject.Class({
                 return true;
             }
         }
-        accel_string = Gtk.accelerator_name_with_keycode(null, accel_key, event.hardware_keycode, Gdk.ModifierType(accel_mods));
-        accel_label = Gtk.accelerator_get_label_with_keycode(null, accel_key, event.hardware_keycode, Gdk.ModifierType(accel_mods));
+        let accel_string = Gtk.accelerator_name_with_keycode(null, accel_key, event.hardware_keycode, accel_mods);
+        let accel_label = Gtk.accelerator_get_label_with_keycode(null, accel_key, event.hardware_keycode, accel_mods);
 
         if (((accel_mods == 0) || (accel_mods == Gdk.ModifierType.SHIFT_MASK)) && (event.hardware_keycode != 0)) {
             if (((keyval >= Gdk.KEY_a)                    && (keyval <= Gdk.KEY_z)) ||
@@ -323,19 +323,17 @@ const CellRendererKeybinding = new GObject.Class({
                 ((keyval >= Gdk.KEY_Hangul)               && (keyval <= Gdk.KEY_Hangul_Special)) ||
                 ((keyval >= Gdk.KEY_Hangul_Kiyeog)        && (keyval <= Gdk.KEY_Hangul_J_YeorinHieuh)) ||
                 (keyval in FORBIDDEN_KEYVALS)) {
-                dialog = new Gtk.MessageDialog({
-                    transient_for: null,
-                    modal: true,
-                    buttons: Gtk.ButtonsType.OK,
+                let dialog = new Gtk.MessageDialog({
+                    buttons: [Gtk.ButtonsType.OK],
                     message_type: Gtk.MessageType.ERROR,
-                    flags: Gtk.DialogFlags.DESTROY_WITH_PARENT,
+                    transient_for: this.a_widget.get_toplevel(),
                 });
                 dialog.set_default_size(400, 200);
-                msg = _("\nThis key combination, \'<b>%s</b>\' cannot be used because it would become impossible to type using this key.\n\n");
+                let msg = _("\nThis key combination, \'<b>%s</b>\' cannot be used because it would become impossible to type using this key.\n\n");
                 msg += _("Please try again with a modifier key such as Control, Alt or Super (Windows key) at the same time.\n");
                 dialog.set_markup(msg.format(accel_label));
                 dialog.show_all();
-                response = dialog.run();
+                let response = dialog.run();
                 dialog.destroy();
                 return true;
             }

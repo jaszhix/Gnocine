@@ -382,7 +382,7 @@ __proto__: ModalDialog.ModalDialog.prototype,
                 let file = Gio.file_new_for_path(path);
                 try {
                     Gio.app_info_launch_default_for_uri(file.get_uri(),
-                            global.create_app_launch_context());
+                            global.__create_app_launch_context());
                 } catch (e) {
                     // The exception from gjs contains an error string like:
                     //     Error invoking Gio.app_info_launch_default_for_uri: No application

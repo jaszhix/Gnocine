@@ -41,6 +41,24 @@ function _patchContainerClass(containerClass) {
     };
 }
 
+function getCurrentFile() {
+    let path = null;
+    try {
+        let stack = (new Error()).stack;
+        let stackLine = stack.split('\n')[1];
+        if (!stackLine)
+            throw new Error('Could not find current file');
+        let match = new RegExp('@(.+):\\d+').exec(stackLine);
+        if (!match)
+            throw new Error('Could not find current file');
+        path = match[1];
+    } catch(e) {
+        global.logError("Unlocalizad reqiered librarys");
+        return null;
+    }
+    return Gio.File.new_for_path(path);
+}
+
 function init() {
     // Add some bindings to the global JS namespace; (gjs keeps the web
     // browser convention of having that namespace be called 'window'.)
@@ -204,9 +222,13 @@ function init() {
     const Convenience = cimports.convenience;
     const Cinnamon = global.loadCinnamon();
     const SignalManager = cimports.misc.signalManager;
+    const Config = cimports.misc.config;
 
     global.cinnamon_settings = Convenience.getSettings("org.cinnamon");
-    global.usercinnamondatadir = GLib.build_filenamev([global.userdatadir, "extensions", "gnocine@json"]);
+    let rootFile = getCurrentFile().get_parent().get_parent();
+    global.rootdatadir = rootFile.get_path();
+    global.rootUUID = rootFile.get_basename();
+    global.userclassicdatadir = GLib.build_filenamev([GLib.get_user_data_dir(), Config.USER_INSTALL_FOLDER]);
     global._stage_input_mode = Cinnamon.StageInputMode.NORMAL;
 
     //global.cinnamonSignalManager = new SignalManager.SignalManager(this);
@@ -319,11 +341,23 @@ function init() {
         };
     }
 
+    // Patch create_app_launch_context, Gnome version expects two arguments.
+    // https://developer.gnome.org/shell/stable/shell-shell-global.html#shell-global-create-app-launch-context
+    global.__create_app_launch_context = function(timestamp, workspaceIndex) {
+        if (timestamp === undefined || !timestamp) {
+            timestamp = global.get_current_time();
+        }
+        if (workspaceIndex === undefined || !workspaceIndex) {
+            workspaceIndex = -1;
+        }
+        return global.create_app_launch_context(timestamp, workspaceIndex);
+    };
+
     if (!global.overlay_group) {
         global.overlay_group = new Clutter.Actor()
     }
 
-    Gtk.IconTheme.get_default().append_search_path(GLib.build_filenamev([global.usercinnamondatadir, "icons"]));
+    Gtk.IconTheme.get_default().append_search_path(GLib.build_filenamev([global.rootdatadir, "icons"]));
 
     Clutter.Actor.prototype.get_direction = function() {
         return this.get_text_direction();

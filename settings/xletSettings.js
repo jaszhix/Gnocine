@@ -5,6 +5,7 @@
  */
 
 const Lang = imports.lang;
+const Mainloop = imports.mainloop;
 const Gettext = imports.gettext;
 const Gio = imports.gi.Gio;
 const GLib = imports.gi.GLib;
@@ -13,6 +14,7 @@ const Gtk = imports.gi.Gtk;
 
 const SettingsWidgets = cimports.settings.settingsWidgets;
 const JsonSettingsWidgets = cimports.settings.jsonSettingsWidgets;
+const Config = cimports.misc.config;
 
 const _ = Gettext.gettext;
 const home = GLib.get_home_dir();
@@ -40,8 +42,8 @@ const XLET_SETTINGS_WIDGETS = {
 };
 
 const XLETSettingsButton = new GObject.Class({
-    Name: 'ClassicGnome.XLETSettingsButton',
-    GTypeName: 'ClassicGnomeXLETSettingsButton',
+    Name: 'Gnocine.XLETSettingsButton',
+    GTypeName: 'GnocineXLETSettingsButton',
     Extends: Gtk.Button,
 
     _init: function(info, uuid, instance_id) {
@@ -90,8 +92,8 @@ function translate(uuid, string) {
 }
 
 const XLetSidePage = new GObject.Class({
-    Name: 'ClassicGnome.XLetSidePage',
-    GTypeName: 'ClassicGnomeXLetSidePage',
+    Name: 'Gnocine.XLetSidePage',
+    GTypeName: 'GnocineXLetSidePage',
     Extends: SettingsWidgets.SidePage,
 
     _init: function(argv, window, module) {
@@ -101,12 +103,14 @@ const XLetSidePage = new GObject.Class({
         this.uuid = argv[2];
         this.instanceId = argv[3];
         this.selected_instance = null;
-        this.isXletDataloaded = this.load_xlet_data();
+
     },
 
-    load: function(window) {
-        if (this.isXletDataloaded) {
-            this.build();
+    load: function() {
+        if (!this.isLoaded) {
+            SettingsWidgets.SidePage.prototype.load.call(this);
+            this.load_xlet_data();
+            this.buildData();
             if (this.load_instances()) {
                 //this.window.show_all();
                 if (this.instanceId && (this.instance_info.length > 1)) {
@@ -152,9 +156,9 @@ const XLetSidePage = new GObject.Class({
     },
 
     load_xlet_data: function() {
-        this.xlet_dir = "/usr/share/cinnamon/%ss/%s".format(this.type, this.uuid);
+        this.xlet_dir = GLib.build_filenamev([global.rootdatadir, this.type+"s", this.uuid]);
         if (!Gio.file_new_for_path(this.xlet_dir).query_exists(null)) {
-            this.xlet_dir = "%s/.local/share/cinnamon/%ss/%s".format(home, this.type, this.uuid);
+            this.xlet_dir = GLib.build_filenamev([global.userclassicdatadir, this.type+"s", this.uuid]);
         }
         let jsonFile = Gio.file_new_for_path("%s/metadata.json".format(this.xlet_dir));
         if (jsonFile.query_exists(null)) {
@@ -169,11 +173,14 @@ const XLetSidePage = new GObject.Class({
         return true;
     },
 
-    build: function() {
-        SettingsWidgets.SidePage.prototype.build.call(this);
+    buildData: function() {
+        this.vbox = new Gtk.Box({ orientation: Gtk.Orientation.VERTICAL });
+        this.vbox.expand = true;
+        this.add_widget(this.vbox);
+
         let toolbar = new Gtk.Toolbar();
         toolbar.get_style_context().add_class("primary-toolbar");
-        this.content_box.add(toolbar);
+        this.vbox.add(toolbar);
 
         let toolitem = new Gtk.ToolItem();
         toolitem.set_expand(true);
@@ -225,7 +232,7 @@ const XLetSidePage = new GObject.Class({
 
         let scw = new Gtk.ScrolledWindow();
         scw.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC);
-        this.content_box.pack_start(scw, true, true, 0);
+        this.vbox.pack_start(scw, true, true, 0);
         this.instance_stack = new Gtk.Stack();
         scw.add(this.instance_stack);
 
@@ -243,7 +250,7 @@ const XLetSidePage = new GObject.Class({
 
     load_instances: function() {
         this.instance_info = [];
-        let path = "%s/.cinnamon/configs/%s".format(home, this.uuid);
+        let path = [GLib.get_home_dir(), Config.USER_DOMAIN_FOLDER, Config.USER_CONFIG_FOLDER, this.uuid].join("/");
         if(!Gio.file_new_for_path(path).query_exists(null)) {
             let error = "Could not find %s metadata for uuid %s - are you sure it's installed correctly?".format(this.type, this.uuid);
             global.logError(error);
@@ -261,9 +268,9 @@ const XLetSidePage = new GObject.Class({
             let instance = instances[pos];
             let instance_id = instance.substring(0, -5);
             let instancePath = GLib.build_filenamev([path, instance]);
-            global.log('INSTANCE PATH: ', instancePath)
+            //global.log('INSTANCE PATH: ', instancePath)
             let settings = new JsonSettingsWidgets.JSONSettingsHandler(instancePath, this.notify_dbus);
-            global.log('SETTINGS: ', JSON.stringify(settings))
+            //global.log('SETTINGS: ', JSON.stringify(settings))
             settings.instance_id = instance_id;
             let instance_box = new Gtk.Box({ orientation: Gtk.Orientation.VERTICAL });
             this.instance_stack.add_named(instance_box, instance_id);
@@ -281,7 +288,7 @@ const XLetSidePage = new GObject.Class({
                         continue;
                     }
                     for (let key in settings_map[setting]) {
-                        global.log('KEY PAIR:', key, settings_map[setting][key])
+                        //global.log('KEY PAIR:', key, settings_map[setting][key])
                         if (key in ["description", "tooltip", "units"]) {
                             try {
                                 settings_map[setting][key] = translate(this.uuid, settings_map[setting][key]);
@@ -315,11 +322,12 @@ const XLetSidePage = new GObject.Class({
                 }
             }
         }
+           this.vbox.show_all();
         return true;
     },
 
     build_with_layout: function(settings_map, info, box, first_key) {
-        global.log('SETTINGS MAP: ', JSON.stringify(settings_map))
+        //global.log('SETTINGS MAP: ', JSON.stringify(settings_map))
         let page_key, page_def, page, section_key, section_def, section, key, item, settings_type, widget;
         let layout = first_key;
         let page_stack = new SettingsWidgets.SettingsStack();
@@ -347,8 +355,8 @@ const XLetSidePage = new GObject.Class({
                         widget = new SettingsWidgets.Text(translate(this.uuid, item.description));
                         section.add_row(widget);
                     } else if (XLET_SETTINGS_WIDGETS.hasOwnProperty(settings_type)) { // Changed to fix invalid 'in' operand error
-                        global.log("Is: " + global[XLET_SETTINGS_WIDGETS[settings_type]]);
-                        global.log(info.settings)
+                        //global.log("Is: " + global[XLET_SETTINGS_WIDGETS[settings_type]]);
+                        //global.log(info.settings)
                         widget = new global[XLET_SETTINGS_WIDGETS[settings_type]](key, info.settings, item);
                         section.add_row(widget);
                     }
@@ -490,6 +498,7 @@ const XLetSidePage = new GObject.Class({
         if (proxy) {
             proxy.highlightXlet('(ssb)', this.uuid, this.selected_instance.id, false);
         }
+        global.log("error " + error);
         //this.content_box.destroy();
     },
 });

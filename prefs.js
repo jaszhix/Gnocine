@@ -27,14 +27,14 @@ const Gettext = imports.gettext;
 const _ = Gettext.gettext;
 
 
-const ClassicGnomePreferencesWidget = new GObject.Class({
-    Name: 'ClassicGnome.ClassicGnomePreferencesWidget',
-    GTypeName: 'ClassicGnomePreferencesWidget',
+const GnocinePreferencesWidget = new GObject.Class({
+    Name: 'Gnocine.GnocinePreferencesWidget',
+    GTypeName: 'GnocinePreferencesWidget',
     Extends: Gtk.Box,
 
     _init: function(params) {
         this.parent(params);
-        //this.settings = Convenience.getSettings('org.gnome.shell.extensions.classicGnome');
+        //this.settings = Convenience.getSettings('org.gnome.shell.extensions.Gnocine');
 
         let frame = new Gtk.Box({
             orientation: Gtk.Orientation.VERTICAL
@@ -926,7 +926,7 @@ function init() {
 }
 
 function buildPrefsWidget() {
-    let widget = new ClassicGnomePreferencesWidget({
+    let widget = new GnocinePreferencesWidget({
         orientation: Gtk.Orientation.VERTICAL,
         spacing: 5,
         border_width: 5

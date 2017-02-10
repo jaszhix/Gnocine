@@ -1,6 +1,6 @@
 #!/usr/bin/gjs
 /* ========================================================================================================
- * xlet-settings.js - An application to display the Classic Gnome xlet settings -
+ * xlet-settings.js - An application to display the Gnocine xlet settings -
  * ========================================================================================================
  *
  * General Usage Order (don't repeat the category when it's the same of the module i.e.: applets applets):
@@ -56,6 +56,9 @@ function getCurrentFile() {
 function initEnvironment() {
     // Monkey-patch in a "global" object that fakes some Shell utilities
     // that ExtensionUtils depends on.
+    let rootFile = getCurrentFile().get_parent().get_parent();
+    imports.searchPath.unshift(rootFile.get_path());
+    window.cimports = imports;
 
     window.global = {
         log: function() {
@@ -68,17 +71,14 @@ function initEnvironment() {
         //cinnamon_settings: imports.convenience.getSettings("org.cinnamon");
         cinnamon_settings: new Gio.Settings({ schema_id: "org.cinnamon" }),
 
-        userdatadir: getCurrentFile().get_parent().get_parent().get_path(),
+        rootdatadir: rootFile.get_path(),
+        userclassicdatadir: GLib.build_filenamev([GLib.get_user_data_dir(), imports.misc.config.USER_INSTALL_FOLDER]),
     };
-
-    imports.searchPath.unshift(global.userdatadir);
-    window.cimports = imports;
 
     String.prototype.format = Format.format;
 }
 
 initEnvironment();
-const Config = imports.misc.config;
 const ModulesLoader = imports.settings.modulesLoader;
 
 const PopWidget = function (properties) {
@@ -106,15 +106,15 @@ const PopWidget = function (properties) {
 const Application = new Lang.Class({
     Name: 'Application',
     _init: function() {
-        this.title = "Classic Gnome";
-        this.subTitle = "The Classic Gnome settings";
+        this.title = "Gnocine";
+        this.subTitle = "The Gnocine settings";
         GLib.set_prgname(this.title);
 
         this.modulesManager = new ModulesLoader.ModulesManager();
         this.modulesRequierd = ["get_side_page", "can_load_with_arguments"];
 
         this.application = new Gtk.Application({
-            application_id: 'org.gnome.shell.ClassicGnome',
+            application_id: 'org.gnome.shell.Gnocine',
             flags: Gio.ApplicationFlags.HANDLES_COMMAND_LINE
         });
         this.application.connect('activate', Lang.bind(this, this._onActivate));
@@ -142,7 +142,7 @@ const Application = new Lang.Class({
     },
 
     _loadModules: function() {
-        let modulePath = GLib.build_filenamev([global.userdatadir, 'tools', 'modules']);
+        let modulePath = GLib.build_filenamev([global.rootdatadir, 'tools', 'modules']);
         this.modulesManager.scan(modulePath, "cg_", this.modulesRequierd);
     },
 
@@ -238,7 +238,7 @@ const Application = new Lang.Class({
             });
 
             try {
-                this.sidePage = this.module.get_side_page(this.argv, window);
+                this.sidePage = this.module.get_side_page(this.argv, this.window);
                 if(this.sidePage) {
                     this.subTitle = this.sidePage.name;
                     try {

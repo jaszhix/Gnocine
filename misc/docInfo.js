@@ -69,7 +69,7 @@ DocInfo.prototype = {
     },
 
     _realLaunch : function() {
-        Gio.app_info_launch_default_for_uri(this.uri, global.create_app_launch_context());
+        Gio.app_info_launch_default_for_uri(this.uri, global.__create_app_launch_context());
     },
 
     // _onMountCallback: function (file, result, data) {

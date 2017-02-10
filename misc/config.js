@@ -10,3 +10,15 @@ const GJS_VERSION = '3.2.0';
 const HAVE_BLUETOOTH = 1;
 /* The system TLS CA list */
 const CINNAMON_SYSTEM_CA_FILE = '/etc/ssl/certs/ca-certificates.crt';
+/* The user folder it's relative to the user home folder */
+const USER_DOMAIN_FOLDER = '.gnocine';
+/* The config folder it's relative to the USER_DOMAIN_FOLDER */
+const USER_CONFIG_FOLDER = 'configs';
+/* The repositories folder it's relative to the USER_DOMAIN_FOLDER */
+const USER_REPOSITORIES_FOLDER = 'xlet.repositories';
+/* The config folder it's relative to the USER_DOMAIN_FOLDER */
+const USER_CACHE_FOLDER = 'xlet.cache';
+/* The install folder it's relative to the user_data_dir folder */
+const USER_INSTALL_FOLDER = 'gnocine';
+/* The locale folder it's relative to the user_data_dir folder */
+const USER_LOCALE_FOLDER = 'locale';

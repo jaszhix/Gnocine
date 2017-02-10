@@ -31,8 +31,8 @@ const JSON_SETTINGS_PROPERTIES_MAP = {
 };
 
 const JSONSettingsHandler = new GObject.Class({
-    Name: 'ClassicGnome.JSONSettingsHandler',
-    GTypeName: 'ClassicGnomeJSONSettingsHandler',
+    Name: 'Gnocine.JSONSettingsHandler',
+    GTypeName: 'GnocineJSONSettingsHandler',
 
     _init: function(filepath, notify_callback) { //notify_callback=null
         this.resume_timeout = null;
@@ -59,14 +59,16 @@ const JSONSettingsHandler = new GObject.Class({
             direction |= Gio.SettingsBindFlags.SET | Gio.SettingsBindFlags.GET;
 
         let binding_info = {"obj": obj, "prop": prop, "dir": direction, "map_get": map_get, "map_set": map_set};
+
         if (!(key in this.bindings))
             this.bindings[key] = [];
         this.bindings[key].push(binding_info);
 
-        if (direction & (Gio.SettingsBindFlags.GET != 0))
+        if (direction & (Gio.SettingsBindFlags.GET != 0)) {
             this.set_object_value(binding_info, this.get_value(key));
-        if (direction & (Gio.SettingsBindFlags.SET != 0))
+        } if (direction & (Gio.SettingsBindFlags.SET != 0)) {
             binding_info["oid"] = obj.connect("notify::"+prop, Lang.bind(this, this.object_value_changed, key));
+        }
 
     },
 
@@ -102,10 +104,12 @@ const JSONSettingsHandler = new GObject.Class({
     },
 
     object_value_changed: function(obj, value, key) {
-        for (let info in this.bindings[key]) {
+        for (let pos in this.bindings[key]) {
+            let info = this.bindings[key][pos];
             if (obj == info["obj"]) {
-                value = info["obj"].get_property(info["prop"]);
-                if (("map_set" in info.keys()) && (info.map_set != null)) {
+                global.log("info: " + info["prop"]);
+                //value = info["obj"].get_property(info["prop"]);
+                if (("map_set" in info) && (info.map_set != null)) {
                     value = info.map_set(value);
                 }
             } else {
@@ -116,16 +120,16 @@ const JSONSettingsHandler = new GObject.Class({
     },
 
     set_object_value: function(info, value) {
-        global.log("--------- " + value + " ----------");
+
         if (info.dir & (Gio.SettingsBindFlags.GET == 0))
             return;
 
-        /*with (info["obj"].freeze_notify()) {
-            if (("map_get" in info.keys()) && (info["map_get"] != null))
+        with (info["obj"]) {//FIXME: we really don't have that: freeze_notify() freeze_child_notify() ?
+            if (("map_get" in info) && (info["map_get"] != null))
                 value = info["map_get"](value);
-            if (value != info["obj"].get_property(info["prop"]))
-                info["obj"].set_property(info["prop"], value);
-        }*/
+            //if (value != info["obj"].get_property(info["prop"])) //FIXME: Jump thats complex we need another parameter?
+            //    info["obj"].set_property(info["prop"], value);
+        }
     },
 
     check_settings: function(args) {
@@ -135,21 +139,19 @@ const JSONSettingsHandler = new GObject.Class({
         for (let key in this.bindings) {
             let new_value = this.settings[key].value;
             if (new_value != old_settings[key].value) {
-                for (let info in this.bindings[key]) {
+                for (let pos in this.bindings[key]) {
+                    let info = this.bindings[key][pos];
                     this.set_object_value(info, new_value);
                 }
             }
         }
 
-        global.log('this.listeners', this.listeners)
-
-        for (let [key, callback_list] in this.listeners) {
-            if (this.settings[key] === undefined) {
-                continue;
-            }
+        for (let key in this.listeners) {
             let new_value = this.settings[key].value;
             if (new_value != old_settings[key].value) {
-                for (let callback in callback_list) {
+                let callback_list = this.listeners[key];
+                for (let pos in callback_list) {
+                    let callback = callback_list[pos];
                     callback(key, new_value);
                 }
             }
@@ -217,7 +219,8 @@ const JSONSettingsHandler = new GObject.Class({
 
     do_key_update: function(key) {
         if (this.bindings.hasOwnProperty(key)) {
-            for (let info in this.bindings[key]) {
+            for (let pos in this.bindings[key]) {
+                let info = this.bindings[key][pos];
                 this.set_object_value(info, this.settings[key].value);
             }
         }
@@ -266,8 +269,8 @@ const JSONSettingsHandler = new GObject.Class({
 
 function json_settings_factory(subclass) {
     const JSONSettingsBackend = new GObject.Class({
-        Name: 'ClassicGnome.JSONSettingsBackend.'+subclass,
-        GTypeName: 'ClassicGnomeJSONSettingsBackend'+subclass,
+        Name: 'Gnocine.JSONSettingsBackend.'+subclass,
+        GTypeName: 'GnocineJSONSettingsBackend'+subclass,
         Extends: eval('SettingsWidgets.' + subclass),
 
         _init: function(key, settings, properties) {
@@ -287,7 +290,6 @@ function json_settings_factory(subclass) {
                     }
                 });
             }
-
             let kwargs = {};
             for (let prop in properties) {
                 if (prop in JSON_SETTINGS_PROPERTIES_MAP) {
@@ -301,32 +303,38 @@ function json_settings_factory(subclass) {
             }
             kwargs.label = properties.description;
             this.parent(kwargs);
-            
+
+            // Set the initial state from settings.
+            //if (subclass === 'Switch') { // instanceof didn't work here
+            //    this.content_widget.set_active(this.state);
+            //}
+            // ... need to check state setting syntax for other classes, and add them here.
             this.attach();
         },
 
         set_dep_key: function(dep_key) {
             if (this.settings.has_key(dep_key)) {
                 this.settings.bind(dep_key, this, "sensitive", Gio.SettingsBindFlags.GET);
+            } else {
+                global.logError("Ignoring dependency on key '%s': no such key in the schema".format(dep_key));
             }
-            //else
-            //    global.logError("Ignoring dependency on key '%s': no such key in the schema".format(dep_key));
         },
 
         attach: function() {
             if (this.hasOwnProperty("set_rounding") && this.settings.has_property(this.key, "round"))
                 this.set_rounding(this.settings.get_property(this.key, "round"));
             let bind_object;
-            if (this.hasOwnProperty("bind_object"))
+            if (this.hasOwnProperty("bind_object")) {
                 bind_object = this.bind_object;
-            else
+            } else {
                 bind_object = this.content_widget;
+            }
             if (this.bind_dir != null) {
                 this.settings.bind(this.key, bind_object, this.bind_prop, this.bind_dir,
                                    this.hasOwnProperty("map_get") ? this.map_get : null,
                                    this.hasOwnProperty("map_set") ? this.map_set : null)
             } else {
-                this.settings.listen(this.key, this.on_setting_changed);
+                this.settings.listen(this.key, Lang.bind(this, this.on_setting_changed));
                 this.on_setting_changed();
                 this.connect_widget_handlers();
             }

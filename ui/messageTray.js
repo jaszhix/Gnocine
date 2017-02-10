@@ -135,7 +135,7 @@ URLHighlighter.prototype = {
                 if (url.indexOf(':') == -1)
                     url = 'http://' + url;
                 try {
-                    Gio.app_info_launch_default_for_uri(url, global.create_app_launch_context());
+                    Gio.app_info_launch_default_for_uri(url, global.__create_app_launch_context());
                     return true;
                 } catch (e) {
                     // TODO: remove this after gnome 3 release
